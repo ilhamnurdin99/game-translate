@@ -158,6 +158,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <input type="checkbox" id="optFixCss" checked>
         Perbaiki otomatis tata letak (Suntik CSS Anti-Overflow)
       </label>
+      <label class="check" style="margin-top: 4px;">
+        <input type="checkbox" id="optParallel" checked>
+        Terjemahan paralel (3 batch sekaligus — lebih cepat, seperti OctopusBridge)
+      </label>
       <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
         <button id="btnUploadGlossary" style="background:#475569; color:#fff; padding: 6px 12px; font-size: 13px;">📚 Upload Kamus Kustom (.csv)</button>
         <span id="glossaryStatus" class="muted" style="font-size: 13px;">Belum ada kamus kustom.</span>
@@ -263,6 +267,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Klik <b>Download ZIP terjemahan</b>, lalu ekstrak dan mainkan seperti biasa.</li>
       <li>Untuk game Ren'Py (.rpy): setelah diterjemahkan, klik <b>Download tl/id/ (Ren'Py)</b> — hasilnya folder <b>game/tl/id/</b> (format asli Ren'Py, file asli tidak diubah). Salin folder itu ke folder <b>game/</b> di game Ren'Py kamu, lalu pilih bahasa di Preferences &gt; Language.</li>
       <li>Untuk game Godot (source .gd/.tscn/.tres): klik <b>Buat .po (Godot)</b> — hasilnya file <b>id.po</b> berisi semua teks dari <b>tr()</b> dan properti text di scene (msgstr masih kosong). Terjemahkan file .po itu (upload lagi ke web app, atau pakai Poedit), lalu daftarkan di Godot: Project Settings &gt; Localization &gt; Translations.</li>
+      <li>Terjemahan berjalan <b>paralel (3 batch sekaligus)</b> supaya daftar besar lebih cepat — matikan lewat checkbox "Terjemahan paralel" di Pengaturan Lanjutan kalau Google mulai menolak (429). Macro Twine yang hanya mencetak teks (print, button, link, dialog, <b>&lt;&lt;= ...&gt;&gt;</b>) ikut diterjemahkan; macro kode (set, if, widget, dll.) dilewati.</li>
     </ol>
     <p class="hint">Mesin terjemahan: kamus bawaan (istilah game umum, offline) → Google Translate → endpoint Chrome → Microsoft Edge → penerjemah bawaan Chrome (PC, offline setelah model terunduh) → MyMemory. Teks yang sudah diterjemahkan tersimpan otomatis di cache browser — kalau proses dihentikan (tombol Batal) atau browser ditutup, klik "Terjemahkan Daftar" lagi nanti dan teks yang sudah selesai langsung terisi dari cache, hanya sisanya yang diterjemahkan. Kode game (script, style, nama variable) tidak disentuh. Teks di dalam gambar/canvas tidak bisa diterjemahkan.</p>
   </section>
@@ -360,8 +365,12 @@ function looksTranslatable(s) {
   if (/@@(species|iterator|revive|toStringTag|hasInstance|isConcatSpreadable|unscopables|asyncIterator|match|replace|search|split|toPrimitive)\b/.test(t)) return false;
   // Fragment tag HTML yang tidak tertutup (<button id="x" ... , <a id=').
   if (/^<[a-zA-Z][^>]*$/.test(t)) return false;
-  // Identifier diakhiri titik (Symbol., Set.prototype.) — sisa potongan kode.
-  if (/^[A-Za-z_$][\w$.]*\.$/.test(t) && !/\s/.test(t)) return false;
+  // Identifier diakhiri titik (Set.prototype., foo.bar.) — sisa potongan kode.
+  // Harus ada titik DI TENGAH (jalur bertitik); satu kata biasa + titik
+  // ("Done.", "Wait.") adalah kalimat pendek yang sah, jadi TIDAK ditolak.
+  // (FASE 25: aturan lama /^[A-Za-z_$][\w$.]*\.$/ menolak "Done." —
+  // ketahuan saat menguji macro, karena "Done." setelah <<append>> hilang.)
+  if (/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)+\.$/.test(t) && !/\s/.test(t)) return false;
   // Kata kunci / global JS-DOM sebagai kata tunggal (bukan teks pemain).
   if (!/\s/.test(t) && /^(document|window|prototype|constructor|undefined|localStorage|sessionStorage|console|readystatechange|SugarCube|function|object|string|number|boolean|symbol)$/i.test(t)) return false;
   // Baris kode JS/jQuery — bukan teks pemain. (FASE 15: Daftar Teks penuh
@@ -738,13 +747,24 @@ function getMissingVars(orig, trans) {
 // sekaligus nama passage — menerjemahkannya akan merusak link.
 // dialog: hanya argumen pertama (judul). print/notify: semua argumen.
 // append/prepend/replace: tidak ada (argumennya selector CSS).
-const MACRO_QUOTE_LABELS = ['button', 'dialog', 'link', 'print', 'notify', 'append', 'prepend', 'replace'];
+// FASE 25: klasifikasi macro berbahaya vs aman (ala OctopusBridge —
+// hanya macro yang MENCETAK teks yang boleh masuk Daftar Teks; macro kode
+// dilewati seluruhnya). SAFE (mencetak teks tampil): print, notify, button,
+// link, dialog, '=' (cetak ekspresi, mis. <<= "Skor: " + $score>>).
+// DANGEROUS (kode, bukan teks tampil): set, if, elseif, else, endif,
+// switch, case, default, widget, for, foreach, break, continue, return,
+// include, display, silently, capture, append, prepend, replace (selector
+// CSS), dan semua macro lain yang tidak dikenal.
+function isDangerousMacro(macroName) {
+  const name = (macroName || '').toLowerCase();
+  return ['print', 'notify', 'button', 'link', 'dialog', '='].indexOf(name) < 0;
+}
 function macroQuoteTranslatable(macroName, qIdx, qCount) {
   const name = (macroName || '').toLowerCase();
   if (name === 'button' || name === 'link') return qCount >= 2 && qIdx === 0;
   if (name === 'dialog') return qIdx === 0;
-  if (name === 'print' || name === 'notify') return true;
-  return false; // append/prepend/replace: selector CSS, bukan teks tampil
+  if (name === 'print' || name === 'notify' || name === '=') return true;
+  return false; // macro berbahaya: selector CSS / kode, bukan teks tampil
 }
 // Pecah satu token macro <<...>> menjadi bagian-bagian: argumen kutip yang
 // bisa diterjemahkan jadi bagian translatable, sisanya tidak. Bagian-bagian
@@ -753,8 +773,9 @@ function macroQuoteTranslatable(macroName, qIdx, qCount) {
 function splitMacroToken(tok, parts) {
   const body = tok.slice(2, -2);
   const mName = /^\s*([A-Za-z_][\w-]*)/.exec(body);
-  const name = mName ? mName[1].toLowerCase() : '';
-  if (MACRO_QUOTE_LABELS.indexOf(name) < 0) { parts.push({ text: tok, translatable: false }); return; }
+  let name = mName ? mName[1].toLowerCase() : '';
+  if (!name && /^\s*=/.test(body)) name = '='; // macro cetak-ekspresi <<= ...>>
+  if (isDangerousMacro(name)) { parts.push({ text: tok, translatable: false }); return; }
   const quotes = [];
   const qRe = /"([^"]*)"|'([^']*)'/g;
   let qm;
@@ -907,6 +928,13 @@ const GT = (() => {
   const MAX_Q = 10;
   const MAX_CHARS = 1000;
   const BATCH_DELAY = 300;
+  // FASE 25: batch paralel (ala OctopusBridge — 100 baris/batch, beberapa
+  // batch paralel, ~28.600 baris/menit). Web app tetap pakai batch kecil
+  // (10 teks / 1000 karakter, FASE 23) supaya tidak diblokir Google, tapi
+  // 3 batch jalan bersamaan — daftar 16 ribu teks ~3x lebih cepat.
+  // Bisa dimatikan lewat checkbox "Terjemahan paralel" (jadi 1 = urut).
+  const PARALLEL_BATCHES = 3;
+  let useParallel = true;
   // Jeda lebih lama setelah menerjemahkan teks yang panjang (>1000 karakter).
   const LONG_TEXT_DELAY = 2000;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1007,6 +1035,7 @@ const GT = (() => {
     return GLOSSARY_GENERAL[k] || (useGameGlossary ? GLOSSARY_GAME[k] : null) || null;
   };
   function setUseGameGlossary(v) { useGameGlossary = !!v; }
+  function setParallel(v) { useParallel = !!v; }
   const hasLetters = (s) => /[A-Za-z]/.test(s);
   function twineSegments(text) {
     const parts = [];
@@ -1312,7 +1341,6 @@ const GT = (() => {
     }
     if (cur.length) batches.push(cur);
     let done = texts.length - todo.length;
-    let nextDelay = 0;
     // Circuit breaker: mesin yang gagal 3 batch beruntun dianggap mati
     // dan dilewati untuk sisa proses — supaya tidak buang waktu retry
     // di setiap batch kalau mesinnya memang sedang diblokir (mis. 429).
@@ -1328,11 +1356,16 @@ const GT = (() => {
     let googleDown = false, dictDown = false, edgeDown = false;
     let googleStreak = 0, dictStreak = 0, edgeStreak = 0;
     const stillTodo = [];
-    for (const batch of batches) {
-      if (cancelled.value) { stillTodo.push(...batch); break; }
-      // Jeda antar batch — kirim sedikit demi sedikit, jangan sekaligus.
-      if (nextDelay > 0) await sleep(nextDelay);
-      if (cancelled.value) { stillTodo.push(...batch); break; } // FASE 20: cek lagi setelah jeda — Batal yang diklik saat jeda tidak boleh lolos satu batch lagi
+    // FASE 25: batch paralel (OctopusBridge). N worker jalan bersamaan,
+    // masing-masing mengambil batch berikutnya setelah jeda (BATCH_DELAY,
+    // atau LONG_TEXT_DELAY setelah batch berisi teks panjang). opts.parallel
+    // (boolean) meng-override checkbox; tanpa itu pakai useParallel.
+    // Batal tetap aman: worker mengecek cancelled sebelum mengambil batch
+    // dan setelah jeda (FASE 20); batch yang belum diambil masuk stillTodo.
+    const parallelOn = (opts && 'parallel' in opts) ? !!opts.parallel : useParallel;
+    const nWorkers = parallelOn ? PARALLEL_BATCHES : 1;
+    let nextIdx = 0;
+    async function runOneBatch(batch) {
       let out = null, engine = '';
       if (!googleDown) {
         onProgress(done, texts.length, 'google'); // tunjukkan mesin yang sedang dicoba
@@ -1358,7 +1391,7 @@ const GT = (() => {
         }
         if (!out) { edgeStreak++; if (edgeStreak >= 3) edgeDown = true; }
       }
-      if (!out) { stillTodo.push(...batch); continue; }
+      if (!out) { stillTodo.push(...batch); return BATCH_DELAY; }
       batch.forEach((t, i) => {
         if (out[i]) { const clean = normalizeSpaces(out[i], t); result.set(t, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKey(src, tgt, t), clean); }
         else result.set(t, { translated: t, fromCache: false, failed: true });
@@ -1367,7 +1400,22 @@ const GT = (() => {
       onProgress(done, texts.length, engine);
       saveCache();
       // Setelah batch berisi teks panjang, jeda lebih lama sebelum batch berikutnya.
-      nextDelay = batch.some((t) => t.length > MAX_CHARS) ? LONG_TEXT_DELAY : BATCH_DELAY;
+      return batch.some((t) => t.length > MAX_CHARS) ? LONG_TEXT_DELAY : BATCH_DELAY;
+    }
+    async function worker() {
+      let delay = 0;
+      while (true) {
+        if (cancelled.value) return;
+        if (delay > 0) await sleep(delay);
+        if (cancelled.value) return; // FASE 20: cek lagi setelah jeda
+        const idx = nextIdx++;
+        if (idx >= batches.length) return;
+        delay = await runOneBatch(batches[idx]);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(nWorkers, batches.length) }, () => worker()));
+    if (cancelled.value) {
+      for (let i = nextIdx; i < batches.length; i++) stillTodo.push(...batches[i]);
     }
     // Sisa yang gagal di semua mesin online -> penerjemah bawaan Chrome.
     if (stillTodo.length && !cancelled.value && typeof Translator !== 'undefined') {
@@ -1518,7 +1566,7 @@ const GT = (() => {
 
     return { html: serializeDoc(doc), stats: { totalItems: items.length, uniqueTexts: uniqTexts.length, translated: applyInfo.applied + titleApplied, fromCache: applyInfo.cached + titleCached, failed: failedTexts.length, failedTexts }, failedTexts, result };
   }
-  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, edgeBatch, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, saveCache, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary };
+  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, edgeBatch, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, saveCache, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel };
 })();
 window.GT = GT;
 
@@ -1827,7 +1875,7 @@ async function repairFile(fileRec, src, tgt) {
 /* ================= Bagian 5: UI ================= */
 const $ = (id) => document.getElementById(id);
 const zipInput = $('zipInput'), folderInput = $('folderInput'), filesInput = $('filesInput');
-const srcLang = $('srcLang'), tgtLang = $('tgtLang'), optTwine = $('optTwine'), optGameGlossary = $('optGameGlossary');
+const srcLang = $('srcLang'), tgtLang = $('tgtLang'), optTwine = $('optTwine'), optGameGlossary = $('optGameGlossary'), optParallel = $('optParallel');
 const btnCheck = $('btnCheck'), btnTranslateSel = $('btnTranslateSel'), btnTranslateAll = $('btnTranslateAll'), btnDryRun = $('btnDryRun');
 const btnCancel = $('btnCancel'), btnDownload = $('btnDownload'), btnRetry = $('btnRetry'), btnClearCache = $('btnClearCache');
 const btnDownloadTl = $('btnDownloadTl');
@@ -1850,6 +1898,7 @@ function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').
 $('tabCheck').addEventListener('click', () => { $('tabCheck').classList.add('active'); $('tabTranslate').classList.remove('active'); $('secUpload').scrollIntoView({ behavior: 'smooth' }); });
 $('tabTranslate').addEventListener('click', () => { $('tabTranslate').classList.add('active'); $('tabCheck').classList.remove('active'); $('resultCard').scrollIntoView({ behavior: 'smooth' }); });
 if (optGameGlossary) optGameGlossary.addEventListener('change', () => { if (window.GT && GT.setUseGameGlossary) GT.setUseGameGlossary(optGameGlossary.checked); });
+if (optParallel) optParallel.addEventListener('change', () => { if (window.GT && GT.setParallel) GT.setParallel(optParallel.checked); }); // FASE 25: batch paralel
 async function readFileAsText(file) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Gagal membaca ' + file.name)); r.readAsText(file); });
 }
@@ -3556,7 +3605,7 @@ window.GTGabungan = {
   looksTranslatable, detectLang, isLangFile, analyzeFile, scanFiles,
   extractFromHTML, extractFromJSON, extractFromRpy, extractFromPo, extractFromCsv, extractFromXml,
   extractQuotedRanges, protectSegments, translateSegment, decodeHTMLEntities, encodeHTMLEntities,
-  splitMacroToken, macroQuoteTranslatable,
+  splitMacroToken, macroQuoteTranslatable, isDangerousMacro,
   translateFileContent, checkTranslated, repairFile, compiledHint, kindLabel,
   renpyMd5, renpyLexerDecode, renpyPyDecode, renpyEncodeSayString, renpyStringQuote,
   renpyEscapeBadPercent, renpySayGetCode, renpyBlockDigest, renpyComputeIdentifier,
