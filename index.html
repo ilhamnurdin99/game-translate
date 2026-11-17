@@ -897,16 +897,15 @@ const GT = (() => {
   const ATTR_NAMES = ['alt', 'title', 'placeholder', 'aria-label'];
   const CACHE_KEY = 'gt_web_cache_v1';
   const CACHE_CAP = 4000;
-  // FASE 22: batch lebih besar + jeda lebih pendek — daftar 16 ribu teks
-  // selesai ~3x lebih cepat. Google gtx/dict dan Edge tahan batch 20 teks /
-  // 3000 karakter; kalau Google menolak (429) 3 batch beruntun, FASE 19
-  // langsung pindah ke Edge, jadi tidak macet. Satu teks yang lebih dari
-  // 3000 karakter tetap dikirim utuh (tidak dipecah) — batasan tidak
-  // berlaku untuk teks tunggal yang panjang.
-  const MAX_Q = 20;
-  const MAX_CHARS = 3000;
+  // FASE 23: batch kembali kecil (10 teks / 1000 karakter) atas permintaan
+  // Ilham — batch 20/3000 (FASE 22) rawan diblokir Google. Jeda tetap
+  // 300ms (FASE 22), jadi tetap lebih cepat dari 700ms lama. Satu teks
+  // yang lebih dari 1000 karakter tetap dikirim utuh (tidak dipecah) —
+  // batasan tidak berlaku untuk teks tunggal yang panjang.
+  const MAX_Q = 10;
+  const MAX_CHARS = 1000;
   const BATCH_DELAY = 300;
-  // Jeda lebih lama setelah menerjemahkan teks yang panjang (>3000 karakter).
+  // Jeda lebih lama setelah menerjemahkan teks yang panjang (>1000 karakter).
   const LONG_TEXT_DELAY = 2000;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const cache = new Map();
