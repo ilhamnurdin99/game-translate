@@ -209,6 +209,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <button id="btnRetry" disabled>↻ Ulangi file yang bermasalah</button>
       <button id="btnDownload" disabled>⬇ Download ZIP terjemahan</button>
       <button id="btnDownloadTl" disabled>⬇ Download tl/id/ (Ren'Py)</button>
+      <button id="btnDownloadPo" disabled>📄 Buat .po (Godot)</button>
       <button id="btnReport" disabled>Download Laporan (.txt)</button>
     </div>
     <div id="checkOut" style="margin-top:10px"></div>
@@ -261,6 +262,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Klik <b>Cek Hasil</b> untuk memeriksa macro, link, dan tag masih utuh. Kalau ada yang rusak, klik <b>Perbaiki</b>.</li>
       <li>Klik <b>Download ZIP terjemahan</b>, lalu ekstrak dan mainkan seperti biasa.</li>
       <li>Untuk game Ren'Py (.rpy): setelah diterjemahkan, klik <b>Download tl/id/ (Ren'Py)</b> — hasilnya folder <b>game/tl/id/</b> (format asli Ren'Py, file asli tidak diubah). Salin folder itu ke folder <b>game/</b> di game Ren'Py kamu, lalu pilih bahasa di Preferences &gt; Language.</li>
+      <li>Untuk game Godot (source .gd/.tscn/.tres): klik <b>Buat .po (Godot)</b> — hasilnya file <b>id.po</b> berisi semua teks dari <b>tr()</b> dan properti text di scene (msgstr masih kosong). Terjemahkan file .po itu (upload lagi ke web app, atau pakai Poedit), lalu daftarkan di Godot: Project Settings &gt; Localization &gt; Translations.</li>
     </ol>
     <p class="hint">Mesin terjemahan: kamus bawaan (istilah game umum, offline) → Google Translate → endpoint Chrome → Microsoft Edge → penerjemah bawaan Chrome (PC, offline setelah model terunduh) → MyMemory. Teks yang sudah diterjemahkan tersimpan otomatis di cache browser — kalau proses dihentikan (tombol Batal) atau browser ditutup, klik "Terjemahkan Daftar" lagi nanti dan teks yang sudah selesai langsung terisi dari cache, hanya sisanya yang diterjemahkan. Kode game (script, style, nama variable) tidak disentuh. Teks di dalam gambar/canvas tidak bisa diterjemahkan.</p>
   </section>
@@ -1829,6 +1831,7 @@ const srcLang = $('srcLang'), tgtLang = $('tgtLang'), optTwine = $('optTwine'), 
 const btnCheck = $('btnCheck'), btnTranslateSel = $('btnTranslateSel'), btnTranslateAll = $('btnTranslateAll'), btnDryRun = $('btnDryRun');
 const btnCancel = $('btnCancel'), btnDownload = $('btnDownload'), btnRetry = $('btnRetry'), btnClearCache = $('btnClearCache');
 const btnDownloadTl = $('btnDownloadTl');
+const btnDownloadPo = $('btnDownloadPo');
 const btnCheckResult = $('btnCheckResult'), btnRepair = $('btnRepair'), btnReport = $('btnReport');
 const barWrap = $('barWrap'), bar = $('bar'), statusEl = $('status'), logEl = $('log');
 const statsEl = $('stats'), stats2El = $('stats2'), tbody = $('tbody'), recoEl = $('reco'), checkOutEl = $('checkOut');
@@ -1979,6 +1982,7 @@ btnCheck.addEventListener('click', async () => {
     statusEl.textContent = 'Selesai — ' + summary.totalFiles + ' file diperiksa, ' + summary.totalStrings + ' teks ditemukan di ' + summary.filesWithText + ' file.';
     log('Selesai: ' + summary.totalStrings + ' teks di ' + summary.filesWithText + ' file.');
     $('btnSaveProject').disabled = false; // Aktifkan tombol simpan
+    btnDownloadPo.disabled = !allFiles.some((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content); // FASE 24: .po hanya untuk source Godot
     $('resultCard').scrollIntoView({ behavior: 'smooth' });
   } catch (e) {
     statusEl.textContent = 'Gagal: ' + (e && e.message ? e.message : e);
@@ -2132,6 +2136,7 @@ async function runTranslation(targets) {
     $('translateCard').style.display = 'block';
     btnDownload.disabled = false;
     btnDownloadTl.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 21: tl/ hanya untuk game Ren'Py
+    btnDownloadPo.disabled = !allFiles.some((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content); // FASE 24
     btnRetry.disabled = allFailed.length === 0;
     btnCheckResult.disabled = false;
     btnRepair.disabled = false;
@@ -2359,6 +2364,7 @@ $('btnApplyList').addEventListener('click', () => {
   });
   if (applied) GT.saveCache();
   if (applied) btnDownloadTl.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 21
+  if (applied) btnDownloadPo.disabled = !allFiles.some((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content); // FASE 24
   $('textListStatus').textContent = applied
     ? applied + ' terjemahan diterapkan ke file ' + (textListFile ? textListFile.path : '') + '. Saat kamu klik "Terjemahkan Semua" / "Terjemahkan yang dipilih", terjemahan editanmu inilah yang dipakai.'
     : 'Tidak ada terjemahan yang diubah — isi dulu kolom Terjemahan (ID) atau klik "Terjemahkan Daftar".';
@@ -2551,6 +2557,22 @@ btnDownloadTl.addEventListener('click', async () => {
   } catch (e) {
     statusEl.textContent = 'Gagal download tl/: ' + (e && e.message ? e.message : e);
   }
+});
+/* FASE 24 — Buat .po dari source Godot (pybabel-godot). */
+btnDownloadPo.addEventListener('click', () => {
+  const tgt = tgtLang.value;
+  const godotFiles = allFiles.filter((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content !== null && f.content !== undefined);
+  if (!godotFiles.length) { statusEl.textContent = 'Tidak ada file source Godot (.gd/.tscn/.tres).'; return; }
+  const built = godotPoBuild(godotFiles, tgt);
+  if (!built) { statusEl.textContent = 'Tidak ada teks Godot yang bisa dibuat .po-nya (tidak ada tr() atau properti text).'; return; }
+  const blob = new Blob([built.content], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = tgt + '.po';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  statusEl.textContent = 'File ' + tgt + '.po di-download (' + built.stringCount + ' teks dari ' + built.fileCount + ' file source Godot). Isi msgstr-nya kosong — terjemahkan file ini (upload lagi ke web app, atau pakai Poedit), lalu daftarkan di Godot: Project Settings > Localization > Translations.';
+  log('Buat .po Godot: ' + built.stringCount + ' teks dari ' + built.fileCount + ' file -> ' + tgt + '.po');
 });
 btnReport.addEventListener('click', () => {
   const lines = ['LAPORAN BAHASA GAME — Game Translate Gabungan'];
@@ -3253,6 +3275,283 @@ function renpyTlPath(filePath, lang) {
   return ['game', 'tl', lang].concat(parts).join('/');
 }
 
+/* ================= FASE 24: Buat .po dari source Godot ================= */
+/* Port pybabel-godot (extract_godot_scene, node-type-aware) + gdgettext
+   (satu regex) + parser bawaan Godot (tr/tr_n/atr, string konstan saja).
+   .gd: tr()/atr()/tr_n()/atr_n()/set_text()/set_placeholder() — hanya
+   string literal (variabel dilewati). .tscn/.tres: properti keyword
+   (text, placeholder_text, tooltip_text, title, ...) per tipe node,
+   string multi-baris """...""" didukung. Output .po standar
+   (msgid/msgstr, msgctxt, msgid_plural, #: lokasi file:baris). */
+
+// ---------- GDScript string literals ----------
+// Reads one GDScript string literal starting at s[i] (a quote char).
+// Returns { value, end } (end = index just past the closing quote) or null.
+// Handles "...", '...', """...""" (multiline), escapes \" \\ \n \t \r \uXXXX.
+function godotReadGdString(s, i) {
+  const q = s[i];
+  if (q !== '"' && q !== "'") return null;
+  const triple = s[i + 1] === q && s[i + 2] === q;
+  let j = i + (triple ? 3 : 1);
+  let out = '';
+  while (j < s.length) {
+    const c = s[j];
+    if (triple) {
+      if (c === q && s[j + 1] === q && s[j + 2] === q) return { value: out, end: j + 3 };
+      if (c === '\\' && j + 1 < s.length) { const e = godotGdEscape(s[j + 1], s, j); out += e.text; j += e.len; continue; }
+      out += c; j++;
+      continue;
+    }
+    if (c === q) return { value: out, end: j + 1 };
+    if (c === '\n' || c === '\r') return null; // single-line string hit EOL
+    if (c === '\\' && j + 1 < s.length) { const e = godotGdEscape(s[j + 1], s, j); out += e.text; j += e.len; continue; }
+    out += c; j++;
+  }
+  return null; // unterminated
+}
+// One escape after a backslash. Returns { text, len } (len = chars consumed incl. backslash).
+function godotGdEscape(next, s, j) {
+  if (next === 'n') return { text: '\n', len: 2 };
+  if (next === 't') return { text: '\t', len: 2 };
+  if (next === 'r') return { text: '\r', len: 2 };
+  if (next === 'u' && /^[0-9a-fA-F]{4}$/.test(s.slice(j + 2, j + 6))) {
+    return { text: String.fromCharCode(parseInt(s.slice(j + 2, j + 6), 16)), len: 6 };
+  }
+  if (next === 'U' && /^[0-9a-fA-F]{8}$/.test(s.slice(j + 2, j + 10))) {
+    return { text: String.fromCodePoint(parseInt(s.slice(j + 2, j + 10), 16)), len: 10 };
+  }
+  return { text: next, len: 2 }; // \" \\ \' etc. -> the char itself
+}
+
+// Parses the argument list of a call starting at the '(' at s[i].
+// Returns array of { kind: 'string', value } | { kind: 'other' } (one per arg).
+function godotParseCallArgs(s, i) {
+  // i must point at '('
+  let j = i + 1;
+  const args = [];
+  let cur = null; // current arg being built: { kind, value } or null
+  let depth = 0;
+  while (j < s.length) {
+    const c = s[j];
+    if (depth === 0 && c === ')') { if (cur) args.push(cur); return args; }
+    if (depth === 0 && c === ',') { if (cur) args.push(cur); cur = null; j++; continue; }
+    if (depth === 0 && (c === ' ' || c === '\t' || c === '\n' || c === '\r')) { j++; continue; }
+    if (c === '(' || c === '[' || c === '{') depth++;
+    if (c === ')' || c === ']' || c === '}') depth--;
+    if (depth === 0 && cur === null && (c === '"' || c === "'")) {
+      const lit = godotReadGdString(s, j);
+      if (lit) { cur = { kind: 'string', value: lit.value }; j = lit.end; continue; }
+    }
+    if (depth === 0 && cur === null && c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r') {
+      cur = { kind: 'other' };
+    }
+    j++;
+  }
+  return args; // unterminated call; return what we have
+}
+
+// ---------- .gd extraction (tr / tr_n / atr / set_text / set_placeholder) ----------
+// Returns [{ text, context, plural, line }] — context/plural are null when absent.
+function godotParseGdStrings(code) {
+  const out = [];
+  // Find call sites: tr(, atr(, tr_n(, atr_n(, set_text(, set_placeholder(
+  const re = /\b(tr_n|atr_n|tr|atr|set_text|set_placeholder)\s*\(/g;
+  let m;
+  while ((m = re.exec(code)) !== null) {
+    const name = m[1];
+    const openParen = m.index + m[0].length - 1;
+    const args = godotParseCallArgs(code, openParen);
+    const line = code.slice(0, m.index).split('\n').length;
+    const str = (k) => (args[k] && args[k].kind === 'string' ? args[k].value : null);
+    if (name === 'tr' || name === 'atr') {
+      const id = str(0);
+      if (id === null || id === '') continue; // variable / empty -> skip (like Godot's parser)
+      out.push({ text: id, context: str(1), plural: null, line });
+    } else if (name === 'tr_n' || name === 'atr_n') {
+      const id = str(0), plural = str(1);
+      if (id === null || id === '') continue;
+      out.push({ text: id, context: str(3), plural: plural, line });
+    } else { // set_text / set_placeholder: first arg only
+      const id = str(0);
+      if (id === null || id === '') continue;
+      out.push({ text: id, context: null, plural: null, line });
+    }
+  }
+  return out;
+}
+
+// ---------- .tscn / .tres extraction (port pybabel-godot extract_godot_scene) ----------
+// Keywords: property names to translate. 'NodeType/name' is node-specific,
+// bare 'name' applies to any node. (pybabel-godot babelrc defaults + Godot docs)
+const GODOT_TSCN_KEYWORDS = [
+  'text', 'placeholder_text', 'tooltip_text', 'title', 'description',
+  'Label/text', 'Button/text', 'LineEdit/text', 'LineEdit/placeholder_text',
+  'TextEdit/text', 'TextEdit/placeholder_text', 'RichTextLabel/text',
+  'Window/title', 'AcceptDialog/title', 'TabContainer/tab_0/title',
+  'OptionButton/text', 'CheckBox/text', 'CheckButton/text', 'MenuButton/text',
+  'LinkButton/text', 'SpinBox/tooltip_text', 'ProgressBar/tooltip_text'
+];
+const GODOT_TSCN_KEYWORD_SET = (() => {
+  const set = {};
+  for (const k of GODOT_TSCN_KEYWORDS) set[k] = true;
+  return set;
+})();
+function godotTscnKeyword(nodeType, prop) {
+  if (nodeType && GODOT_TSCN_KEYWORD_SET[nodeType + '/' + prop]) return nodeType + '/' + prop;
+  if (GODOT_TSCN_KEYWORD_SET[prop]) return prop;
+  return null;
+}
+// Unescape a Godot .tscn string value (without the surrounding quotes).
+function godotUnescapeTscn(s) {
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '\\' && i + 1 < s.length) {
+      const e = godotGdEscape(s[i + 1], s, i);
+      out += e.text; i += e.len - 1; continue;
+    }
+    out += c;
+  }
+  return out;
+}
+// Extracts { text, line } from a .tscn/.tres file. Multiline """...""" supported.
+function godotExtractTscn(content) {
+  const out = [];
+  const lines = content.split('\n');
+  let nodeType = null; // current [node] type; null when outside a node
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const nodeM = /^\[node\b[^\]]*\btype="([^"]*)"/.exec(line);
+    if (nodeM) { nodeType = nodeM[1]; i++; continue; }
+    if (/^\[/.test(line)) { nodeType = null; i++; continue; }
+    if (nodeType !== null) {
+      const propM = /^([A-Za-z_][A-Za-z0-9_\/]*)\s*=\s*(.*)$/.exec(line);
+      if (propM) {
+        const prop = propM[1];
+        const rest = propM[2];
+        if (godotTscnKeyword(nodeType, prop)) {
+          // Value: "..." or """...""" (possibly multiline) or [...] array (skip)
+          if (rest.startsWith('"""')) {
+            let val = rest.slice(3);
+            let endLine = i;
+            let closed = val.indexOf('"""');
+            while (closed < 0 && endLine + 1 < lines.length) {
+              endLine++;
+              val += '\n' + lines[endLine];
+              closed = val.indexOf('"""');
+            }
+            if (closed >= 0) {
+              const text = godotUnescapeTscn(val.slice(0, closed));
+              if (text !== '') out.push({ text, line: i + 1 });
+              i = endLine + 1; continue;
+            }
+            // unterminated triple-quote: skip to end
+            i = endLine + 1; continue;
+          }
+          const strM = /^"((?:[^"\\]|\\.)*)"/.exec(rest);
+          if (strM) {
+            const text = godotUnescapeTscn(strM[1]);
+            if (text !== '') out.push({ text, line: i + 1 });
+          }
+        }
+      }
+    }
+    i++;
+  }
+  return out;
+}
+
+// ---------- .po rendering ----------
+// Escapes a string for .po (msgid/msgstr/msgctxt).
+function godotPoEscape(s) {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n').replace(/\t/g, '\\t').replace(/\r/g, '\\r');
+}
+// Wraps a long .po string across lines (gettext style). Short strings stay one line.
+function godotPoString(s) {
+  const esc = godotPoEscape(s);
+  if (esc.length <= 76) return '"' + esc + '"';
+  // Split on word boundaries, keep each chunk <= 76 chars.
+  const parts = [];
+  let cur = '';
+  const words = esc.split(/(?<= )|(?= )/); // keep spaces attached
+  for (const w of words) {
+    if ((cur + w).length > 76 && cur) { parts.push(cur); cur = w; }
+    else cur += w;
+  }
+  if (cur) parts.push(cur);
+  if (!parts.length) return '""';
+  return '""\n' + parts.map((p) => '"' + p + '"').join('\n');
+}
+// Builds a .po file from Godot source files.
+// files: [{ path, content }]. lang: target language code ('id').
+// Returns { content, stringCount, fileCount } or null when nothing found.
+function godotPoBuild(files, lang) {
+  const map = new Map(); // key = (context||'') + '\x00' + text -> { text, context, plural, locs: [] }
+  let fileCount = 0;
+  for (const f of files) {
+    if (!f.content) continue;
+    const ext = (f.path.split('.').pop() || '').toLowerCase();
+    let found = [];
+    if (ext === 'gd') found = godotParseGdStrings(f.content);
+    else if (ext === 'tscn' || ext === 'tres') found = godotExtractTscn(f.content);
+    else continue;
+    fileCount++;
+    for (const s of found) {
+      const key = (s.context || '') + '\x00' + s.text;
+      let e = map.get(key);
+      if (!e) { e = { text: s.text, context: s.context || null, plural: s.plural || null, locs: [] }; map.set(key, e); }
+      e.locs.push(f.path + ':' + s.line);
+      if (!e.plural && s.plural) e.plural = s.plural;
+    }
+  }
+  if (!map.size) return null;
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + '+0000';
+  const out = [];
+  out.push('# SOME DESCRIPTIVE TITLE.');
+  out.push('# Copyright (C) YEAR THE PACKAGE\'S COPYRIGHT HOLDER');
+  out.push('# This file is distributed under the same license as the PACKAGE package.');
+  out.push('# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.');
+  out.push('#');
+  out.push('#, fuzzy');
+  out.push('msgid ""');
+  out.push('msgstr ""');
+  out.push('"Project-Id-Version: PACKAGE VERSION\\n"');
+  out.push('"Report-Msgid-Bugs-To: \\n"');
+  out.push('"POT-Creation-Date: ' + stamp + '\\n"');
+  out.push('"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\\n"');
+  out.push('"Last-Translator: FULL NAME <EMAIL@ADDRESS>\\n"');
+  out.push('"Language-Team: LANGUAGE <LL@li.org>\\n"');
+  out.push('"Language: ' + lang + '\\n"');
+  out.push('"MIME-Version: 1.0\\n"');
+  out.push('"Content-Type: text/plain; charset=UTF-8\\n"');
+  out.push('"Content-Transfer-Encoding: 8bit\\n"');
+  for (const e of map.values()) {
+    out.push('');
+    // Location comments, wrapped so no line gets too long.
+    let locLine = '#: ' + e.locs.join(' ');
+    if (locLine.length > 100) {
+      const chunks = [];
+      let cur = '#:';
+      for (const loc of e.locs) {
+        if ((cur + ' ' + loc).length > 100 && cur !== '#:') { chunks.push(cur); cur = '#:'; }
+        cur += ' ' + loc;
+      }
+      chunks.push(cur);
+      locLine = chunks.join('\n');
+    }
+    out.push(locLine);
+    if (e.context) out.push('msgctxt ' + godotPoString(e.context));
+    out.push('msgid ' + godotPoString(e.text));
+    if (e.plural) out.push('msgid_plural ' + godotPoString(e.plural));
+    out.push('msgstr ""');
+  }
+  return { content: out.join('\n') + '\n', stringCount: map.size, fileCount };
+}
+
 window.GTGabungan = {
   looksTranslatable, detectLang, isLangFile, analyzeFile, scanFiles,
   extractFromHTML, extractFromJSON, extractFromRpy, extractFromPo, extractFromCsv, extractFromXml,
@@ -3262,7 +3561,8 @@ window.GTGabungan = {
   renpyMd5, renpyLexerDecode, renpyPyDecode, renpyEncodeSayString, renpyStringQuote,
   renpyEscapeBadPercent, renpySayGetCode, renpyBlockDigest, renpyComputeIdentifier,
   renpyExtractSaySuffix, renpyNormaliseLine, renpyIsTechnicalString,
-  renpyLogicalLines, renpyScanTl, renpyTlBuild, renpyTlPath
+  renpyLogicalLines, renpyScanTl, renpyTlBuild, renpyTlPath,
+  godotParseGdStrings, godotExtractTscn, godotPoBuild, godotPoEscape
 };
 </script>
 </body>
