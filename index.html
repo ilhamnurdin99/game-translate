@@ -167,6 +167,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <span id="glossaryStatus" class="muted" style="font-size: 13px;">Belum ada kamus kustom.</span>
         <input type="file" id="glossaryUpload" accept=".csv" style="display:none">
       </div>
+      <div style="margin-top: 10px; padding: 10px; background: #0f172a; border-radius: 8px; border: 1px solid #334155;">
+        <label class="check" style="margin-top: 0;">
+          <input type="checkbox" id="optCustomProvider">
+          Pakai provider custom (API key sendiri — Groq, OpenRouter, DeepSeek, dll.)
+        </label>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
+          <input type="text" id="customBaseUrl" placeholder="Alamat API (contoh: https://api.groq.com/openai/v1)" style="width:100%; box-sizing:border-box; padding:6px; border-radius:6px; border:1px solid #334155; background:#1e293b; color:#e2e8f0;">
+          <input type="password" id="customApiKey" placeholder="API key" autocomplete="off" style="width:100%; box-sizing:border-box; padding:6px; border-radius:6px; border:1px solid #334155; background:#1e293b; color:#e2e8f0;">
+          <input type="text" id="customModel" placeholder="Nama model (contoh: llama-3.3-70b-versatile)" style="width:100%; box-sizing:border-box; padding:6px; border-radius:6px; border:1px solid #334155; background:#1e293b; color:#e2e8f0;">
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <button id="btnTestCustom" style="background:#475569; color:#fff; padding: 6px 12px; font-size: 13px;">🔌 Uji Provider</button>
+            <span id="customStatus" class="muted" style="font-size: 13px;">Provider custom mati.</span>
+          </div>
+          <span class="muted" style="font-size: 12px;">Format OpenAI-compatible. Key hanya tersimpan di browser ini (tidak ikut file proyek). Kalau provider gagal / kena limit, web app otomatis pindah ke mesin gratis.</span>
+        </div>
+      </div>
     </div>
     <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
       <button id="btnSaveProject" style="background:#0ea5e9; color:#fff;" disabled>💾 Simpan Proyek (.json)</button>
@@ -271,9 +287,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Untuk game Ren'Py (.rpy): mau terjemah di Poedit? Klik <b>Buat .po (Ren'Py)</b> — hasilnya file <b>renpy-id.po</b> berisi semua dialog dan teks UI. Terjemahkan di Poedit (atau upload lagi ke web app), lalu klik <b>Download tl/id/ (Ren'Py)</b> untuk memakai terjemahannya.</li>
       <li>Untuk game Godot (source .gd/.tscn/.tres): klik <b>Buat .po (Godot)</b> — hasilnya file <b>id.po</b> berisi semua teks dari <b>tr()</b> dan properti text di scene (msgstr masih kosong). Terjemahkan file .po itu (upload lagi ke web app, atau pakai Poedit), lalu daftarkan di Godot: Project Settings &gt; Localization &gt; Translations.</li>
       <li>Terjemahan berjalan <b>paralel (3 batch sekaligus)</b> supaya daftar besar lebih cepat — matikan lewat checkbox "Terjemahan paralel" di Pengaturan Lanjutan kalau Google mulai menolak (429). Macro Twine yang hanya mencetak teks (print, button, link, dialog, <b>&lt;&lt;= ...&gt;&gt;</b>) ikut diterjemahkan; macro kode (set, if, widget, dll.) dilewati.</li>
+      <li>Punya API key sendiri (Groq, OpenRouter, DeepSeek, dll.)? Aktifkan <b>provider custom</b> di Pengaturan Lanjutan — isi alamat API, key, dan nama model, lalu klik "Uji Provider". Provider custom dipakai pertama sebelum mesin gratis; key hanya tersimpan di browser ini.</li>
       <li>Kalau hasil terjemahan kehilangan variabel (mis. {gold}, %s, [item]), web app <b>memperbaikinya otomatis</b>: hanya bagian kalimatnya yang diterjemahkan ulang, variabel aslinya disambung kembali (ala Fallowborn). Kalau Google gagal membaca satu batch, dicoba lagi dengan format marker sebelum pindah ke mesin lain.</li>
     </ol>
-    <p class="hint">Mesin terjemahan: kamus bawaan (istilah game umum, offline) → Google Translate → endpoint Chrome → Microsoft Edge → penerjemah bawaan Chrome (PC, offline setelah model terunduh) → MyMemory. Teks yang sudah diterjemahkan tersimpan otomatis di cache browser (4000 terjemahan terakhir) — kalau proses dihentikan (tombol Batal), klik "Terjemahkan Daftar" lagi nanti dan teks yang sudah selesai langsung terisi dari cache, hanya sisanya yang diterjemahkan. Untuk daftar lebih besar dari 4000 teks, klik "Simpan Proyek" (.json) supaya tidak hilang kalau halaman di-refresh. Kode game (script, style, nama variable) tidak disentuh. Teks di dalam gambar/canvas tidak bisa diterjemahkan.</p>
+    <p class="hint">Mesin terjemahan: provider custom (kalau diaktifkan) → kamus bawaan (istilah game umum, offline) → Google Translate → endpoint Chrome → Microsoft Edge → penerjemah bawaan Chrome (PC, offline setelah model terunduh) → MyMemory. Teks yang sudah diterjemahkan tersimpan otomatis di cache browser (4000 terjemahan terakhir) — kalau proses dihentikan (tombol Batal), klik "Terjemahkan Daftar" lagi nanti dan teks yang sudah selesai langsung terisi dari cache, hanya sisanya yang diterjemahkan. Untuk daftar lebih besar dari 4000 teks, klik "Simpan Proyek" (.json) supaya tidak hilang kalau halaman di-refresh. Kode game (script, style, nama variable) tidak disentuh. Teks di dalam gambar/canvas tidak bisa diterjemahkan.</p>
   </section>
 </main>
 <script>
@@ -1065,6 +1082,18 @@ const GT = (() => {
   };
   function setUseGameGlossary(v) { useGameGlossary = !!v; }
   function setParallel(v) { useParallel = !!v; }
+  // FASE 30: Provider custom (OpenAI-compatible). Konfigurasi diisi lewat
+  // panel Pengaturan Lanjutan; disimpan di localStorage browser sendiri.
+  const LANG_NAMES = { en: 'English', id: 'Indonesian', pt: 'Portuguese', es: 'Spanish', fr: 'French', de: 'German', ja: 'Japanese', 'zh-CN': 'Chinese', ko: 'Korean', ru: 'Russian', ar: 'Arabic', nl: 'Dutch', it: 'Italian', tl: 'Tagalog' };
+  let customCfg = { enabled: false, baseUrl: '', apiKey: '', model: '' };
+  function setCustomProvider(cfg) {
+    customCfg = {
+      enabled: !!(cfg && cfg.enabled),
+      baseUrl: String((cfg && cfg.baseUrl) || '').replace(/\/+$/, ''),
+      apiKey: String((cfg && cfg.apiKey) || ''),
+      model: String((cfg && cfg.model) || ''),
+    };
+  }
   const hasLetters = (s) => /[A-Za-z]/.test(s);
   function twineSegments(text) {
     const parts = [];
@@ -1303,6 +1332,48 @@ const GT = (() => {
     }
     return out;
   }
+  // FASE 30: Batch lewat provider custom (OpenAI-compatible) — Groq,
+  // OpenRouter, DeepSeek, Cerebras, LM Studio, Ollama, dll. POST ke
+  // {baseUrl}/chat/completions dengan header Authorization Bearer, minta
+  // balasan berupa array JSON supaya urutan terjaga. Kalau format balasan
+  // tidak dikenal / jumlah tidak cocok -> throw, supaya fallback ke mesin
+  // gratis jalan (sama seperti googleBatch yang throw).
+  function parseCustomResponse(content, n) {
+    if (typeof content !== 'string') return null;
+    let s = content.trim();
+    // Buang pagar kode markdown ```json ... ``` kalau ada.
+    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fence) s = fence[1].trim();
+    const a = s.indexOf('['), b = s.lastIndexOf(']');
+    if (a < 0 || b <= a) return null;
+    let arr;
+    try { arr = JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
+    if (!Array.isArray(arr) || arr.length !== n) return null;
+    for (const x of arr) if (typeof x !== 'string' || !x) return null;
+    return arr;
+  }
+  async function customBatch(texts, src, tgt) {
+    const url = customCfg.baseUrl + '/chat/completions';
+    const srcName = LANG_NAMES[src] || src, tgtName = LANG_NAMES[tgt] || tgt;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + customCfg.apiKey },
+      body: JSON.stringify({
+        model: customCfg.model,
+        temperature: 0,
+        messages: [
+          { role: 'system', content: 'You are a professional game translator. Translate each string from ' + srcName + ' to ' + tgtName + '. Preserve placeholders like {var}, [var], %s, and HTML tags exactly. Keep game terms consistent. Return ONLY a JSON array of translated strings in the same order, with no explanations.' },
+          { role: 'user', content: JSON.stringify(texts) },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error('Custom HTTP ' + res.status);
+    const data = await res.json();
+    const content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    const out = parseCustomResponse(content, texts.length);
+    if (!out) throw new Error('Custom: format balasan tidak dikenal');
+    return out;
+  }
   async function mymemoryOne(text, src, tgt) {
     const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=' + src + '|' + tgt;
     const res = await fetch(url);
@@ -1423,8 +1494,8 @@ const GT = (() => {
       if (mm) { const code = parseInt(mm[1], 10); return code >= 500; }
       return true;
     }
-    let googleDown = false, dictDown = false, edgeDown = false;
-    let googleStreak = 0, dictStreak = 0, edgeStreak = 0;
+    let googleDown = false, dictDown = false, edgeDown = false, customDown = false;
+    let googleStreak = 0, dictStreak = 0, edgeStreak = 0, customStreak = 0;
     const stillTodo = [];
     // FASE 25: batch paralel (OctopusBridge). N worker jalan bersamaan,
     // masing-masing mengambil batch berikutnya setelah jeda (BATCH_DELAY,
@@ -1437,6 +1508,19 @@ const GT = (() => {
     let nextIdx = 0;
     async function runOneBatch(batch) {
       let out = null, engine = '';
+      // FASE 30: provider custom (API key sendiri) dicoba PERTAMA kalau
+      // diaktifkan dan pengaturannya lengkap — key milik pengguna, kuotanya
+      // resmi, jadi tidak kena blokir 429 endpoint gratis. Gagal 3 batch
+      // beruntun -> dianggap mati untuk sisa proses (circuit breaker sama
+      // seperti Google/dict/Edge); key salah (401/403) tidak dicoba ulang.
+      if (!customDown && customCfg.enabled && customCfg.apiKey && customCfg.baseUrl && customCfg.model) {
+        onProgress(done, texts.length, 'custom');
+        for (let attempt = 0; attempt < 2 && !out; attempt++) {
+          try { out = await customBatch(batch, src, tgt); engine = 'custom'; customStreak = 0; break; }
+          catch (e) { if (!isRetryable(e)) break; await sleep(1000 * (attempt + 1)); }
+        }
+        if (!out) { customStreak++; if (customStreak >= 3) customDown = true; }
+      }
       if (!googleDown) {
         onProgress(done, texts.length, 'google'); // tunjukkan mesin yang sedang dicoba
         for (let attempt = 0; attempt < 3 && !out; attempt++) {
@@ -1671,7 +1755,7 @@ const GT = (() => {
 
     return { html: serializeDoc(doc), stats: { totalItems: items.length, uniqueTexts: uniqTexts.length, translated: applyInfo.applied + titleApplied, fromCache: applyInfo.cached + titleCached, failed: failedTexts.length, failedTexts }, failedTexts, result };
   }
-  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, saveCache, cacheCap: CACHE_CAP, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel };
+  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, customBatch, setCustomProvider, parseCustomResponse, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, saveCache, cacheCap: CACHE_CAP, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel };
 })();
 window.GT = GT;
 
@@ -2005,6 +2089,60 @@ $('tabCheck').addEventListener('click', () => { $('tabCheck').classList.add('act
 $('tabTranslate').addEventListener('click', () => { $('tabTranslate').classList.add('active'); $('tabCheck').classList.remove('active'); $('resultCard').scrollIntoView({ behavior: 'smooth' }); });
 if (optGameGlossary) optGameGlossary.addEventListener('change', () => { if (window.GT && GT.setUseGameGlossary) GT.setUseGameGlossary(optGameGlossary.checked); });
 if (optParallel) optParallel.addEventListener('change', () => { if (window.GT && GT.setParallel) GT.setParallel(optParallel.checked); }); // FASE 25: batch paralel
+// FASE 30: Provider custom — simpan di localStorage sendiri (BUKAN di file
+// proyek, supaya API key tidak ikut tersebar kalau file proyek dibagikan).
+const CUSTOM_KEY = 'gt_custom_provider_v1';
+function updateCustomStatus() {
+  const el = $('customStatus');
+  if (!el) return;
+  const on = $('optCustomProvider') && $('optCustomProvider').checked;
+  const filled = $('customBaseUrl') && $('customBaseUrl').value.trim() && $('customApiKey') && $('customApiKey').value.trim() && $('customModel') && $('customModel').value.trim();
+  el.textContent = !on ? 'Provider custom mati.' : (filled ? 'Provider custom aktif — dipakai pertama sebelum Google gratis.' : 'Provider custom aktif tapi pengaturan belum lengkap (isi alamat, key, dan model).');
+}
+function saveCustomProvider() {
+  const cfg = {
+    enabled: $('optCustomProvider') ? $('optCustomProvider').checked : false,
+    baseUrl: $('customBaseUrl') ? $('customBaseUrl').value.trim() : '',
+    apiKey: $('customApiKey') ? $('customApiKey').value.trim() : '',
+    model: $('customModel') ? $('customModel').value.trim() : '',
+  };
+  try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(cfg)); } catch (e) { /* abaikan */ }
+  if (window.GT && GT.setCustomProvider) GT.setCustomProvider(cfg);
+  updateCustomStatus();
+}
+function loadCustomProvider() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_KEY);
+    if (!raw) return;
+    const cfg = JSON.parse(raw);
+    if ($('optCustomProvider')) $('optCustomProvider').checked = !!cfg.enabled;
+    if ($('customBaseUrl')) $('customBaseUrl').value = cfg.baseUrl || '';
+    if ($('customApiKey')) $('customApiKey').value = cfg.apiKey || '';
+    if ($('customModel')) $('customModel').value = cfg.model || '';
+    if (window.GT && GT.setCustomProvider) GT.setCustomProvider(cfg);
+    updateCustomStatus();
+  } catch (e) { /* abaikan */ }
+}
+['optCustomProvider', 'customBaseUrl', 'customApiKey', 'customModel'].forEach((id) => {
+  const el = $(id);
+  if (el) el.addEventListener('change', saveCustomProvider);
+});
+if ($('btnTestCustom')) $('btnTestCustom').addEventListener('click', async () => {
+  const el = $('customStatus');
+  const btn = $('btnTestCustom');
+  btn.disabled = true;
+  if (el) el.textContent = 'Menguji provider…';
+  const cfgEmpty = !($('customBaseUrl') && $('customBaseUrl').value.trim()) || !($('customApiKey') && $('customApiKey').value.trim()) || !($('customModel') && $('customModel').value.trim());
+  if (cfgEmpty) { if (el) el.textContent = 'Isi dulu alamat API, key, dan nama model.'; btn.disabled = false; return; }
+  try {
+    const out = await GT.customBatch(['Hello world'], 'en', 'id');
+    if (el) el.textContent = 'OK — "Hello world" → "' + (out && out[0] ? out[0] : '') + '". Provider bisa dipakai.';
+  } catch (e) {
+    if (el) el.textContent = 'Gagal: ' + (e && e.message ? e.message : e) + ' — periksa alamat, key, dan model.';
+  }
+  btn.disabled = false;
+});
+loadCustomProvider();
 async function readFileAsText(file) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Gagal membaca ' + file.name)); r.readAsText(file); });
 }
