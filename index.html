@@ -264,6 +264,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <ol class="howto">
       <li>Pilih file ZIP/APK, folder, atau banyak file game, lalu klik <b>Periksa Sekarang</b>.</li>
       <li>Centang file yang mau diterjemahkan, lalu klik <b>Terjemahkan yang dipilih</b> atau <b>Terjemahkan Semua</b>. Tunggu sampai selesai (file besar butuh waktu; butuh internet karena terjemahan lewat Google).</li>
+      <li>Untuk daftar besar, pakai <b>Daftar Teks</b>: pilih file, klik "Tampilkan Daftar Teks", lalu "Terjemahkan Daftar". Kalau sudah selesai, klik <b>Terapkan ke File</b> — file langsung jadi tanpa internet (hanya memakai terjemahan dari daftar), lalu unduh lewat <b>Download ZIP terjemahan</b>. Kalau daftar lebih besar dari 4000 teks, klik "Simpan Proyek" supaya terjemahan tidak hilang saat halaman di-refresh.</li>
       <li>Klik <b>Cek Hasil</b> untuk memeriksa macro, link, dan tag masih utuh. Kalau ada yang rusak, klik <b>Perbaiki</b>.</li>
       <li>Klik <b>Download ZIP terjemahan</b>, lalu ekstrak dan mainkan seperti biasa.</li>
       <li>Untuk game Ren'Py (.rpy): setelah diterjemahkan, klik <b>Download tl/id/ (Ren'Py)</b> — hasilnya folder <b>game/tl/id/</b> (format asli Ren'Py, file asli tidak diubah). Salin folder itu ke folder <b>game/</b> di game Ren'Py kamu, lalu pilih bahasa di Preferences &gt; Language.</li>
@@ -272,7 +273,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Terjemahan berjalan <b>paralel (3 batch sekaligus)</b> supaya daftar besar lebih cepat — matikan lewat checkbox "Terjemahan paralel" di Pengaturan Lanjutan kalau Google mulai menolak (429). Macro Twine yang hanya mencetak teks (print, button, link, dialog, <b>&lt;&lt;= ...&gt;&gt;</b>) ikut diterjemahkan; macro kode (set, if, widget, dll.) dilewati.</li>
       <li>Kalau hasil terjemahan kehilangan variabel (mis. {gold}, %s, [item]), web app <b>memperbaikinya otomatis</b>: hanya bagian kalimatnya yang diterjemahkan ulang, variabel aslinya disambung kembali (ala Fallowborn). Kalau Google gagal membaca satu batch, dicoba lagi dengan format marker sebelum pindah ke mesin lain.</li>
     </ol>
-    <p class="hint">Mesin terjemahan: kamus bawaan (istilah game umum, offline) → Google Translate → endpoint Chrome → Microsoft Edge → penerjemah bawaan Chrome (PC, offline setelah model terunduh) → MyMemory. Teks yang sudah diterjemahkan tersimpan otomatis di cache browser — kalau proses dihentikan (tombol Batal) atau browser ditutup, klik "Terjemahkan Daftar" lagi nanti dan teks yang sudah selesai langsung terisi dari cache, hanya sisanya yang diterjemahkan. Kode game (script, style, nama variable) tidak disentuh. Teks di dalam gambar/canvas tidak bisa diterjemahkan.</p>
+    <p class="hint">Mesin terjemahan: kamus bawaan (istilah game umum, offline) → Google Translate → endpoint Chrome → Microsoft Edge → penerjemah bawaan Chrome (PC, offline setelah model terunduh) → MyMemory. Teks yang sudah diterjemahkan tersimpan otomatis di cache browser (4000 terjemahan terakhir) — kalau proses dihentikan (tombol Batal), klik "Terjemahkan Daftar" lagi nanti dan teks yang sudah selesai langsung terisi dari cache, hanya sisanya yang diterjemahkan. Untuk daftar lebih besar dari 4000 teks, klik "Simpan Proyek" (.json) supaya tidak hilang kalau halaman di-refresh. Kode game (script, style, nama variable) tidak disentuh. Teks di dalam gambar/canvas tidak bisa diterjemahkan.</p>
   </section>
 </main>
 <script>
@@ -935,7 +936,8 @@ const GT = (() => {
   const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'CODE', 'PRE', 'SVG', 'IFRAME', 'OBJECT', 'EMBED']);
   const ATTR_NAMES = ['alt', 'title', 'placeholder', 'aria-label'];
   const CACHE_KEY = 'gt_web_cache_v1';
-  const CACHE_CAP = 4000;
+  const CACHE_CAP = 4000; // batas yang DISIMPAN ke localStorage (~5 MB)
+  const CACHE_MEM_CAP = 60000; // batas cache di memori (FASE 28)
   // FASE 23: batch kembali kecil (10 teks / 1000 karakter) atas permintaan
   // Ilham — batch 20/3000 (FASE 22) rawan diblokir Google. Jeda tetap
   // 300ms (FASE 22), jadi tetap lebih cepat dari 700ms lama. Satu teks
@@ -965,13 +967,24 @@ const GT = (() => {
     clearTimeout(cacheTimer);
     cacheTimer = setTimeout(() => {
       try {
-        while (cache.size > CACHE_CAP) cache.delete(cache.keys().next().value);
-        const obj = {}; for (const [k, v] of cache) obj[k] = v;
+        // FASE 28: JANGAN buang entri dari Map yang masih dipakai. Dulu
+        // `while (cache.size > CACHE_CAP) cache.delete(...)` membuang
+        // terjemahan AWAL daftar besar saat proses berjalan — akibatnya
+        // "Terjemahkan Daftar" yang diulang mulai lagi dari ~3000, bukan
+        // dari cache penuh. Sekarang Map boleh tumbuh sampai CACHE_MEM_CAP
+        // (memori sanggup menampung puluhan ribu teks); yang disimpan ke
+        // localStorage hanya CACHE_CAP entri TERBARU supaya tidak melebihi
+        // kuota ~5 MB. Daftar besar tetap butuh "Simpan Proyek" (.json)
+        // supaya tidak hilang kalau halaman di-refresh.
+        while (cache.size > CACHE_MEM_CAP) cache.delete(cache.keys().next().value);
+        const obj = {}; for (const [k, v] of [...cache.entries()].slice(-CACHE_CAP)) obj[k] = v;
         localStorage.setItem(CACHE_KEY, JSON.stringify(obj));
+        window.gtCacheFull = false;
       } catch (e) {
         // Peringatan jika localStorage penuh (biasanya karena game punya >4000 teks unik).
         // Tanpa ini alat diam-diam berhenti menyimpan terjemahan.
         if (e.name === 'QuotaExceededError' || e.code === 22) {
+          window.gtCacheFull = true; // FASE 28: dibaca status Daftar Teks
           console.warn('Cache terjemahan penuh (localStorage QuotaExceeded). Sebagian terjemahan mungkin tidak tersimpan permanen.');
           // Tampilkan pesan ke UI jika statusEl tersedia (sekali saja, jangan spam).
           if (typeof statusEl !== 'undefined' && statusEl && statusEl.innerHTML.indexOf('Cache browser penuh') === -1) {
@@ -1373,6 +1386,15 @@ const GT = (() => {
       onProgress(texts.length - todo.length, texts.length, 'glossary');
       if (todo.length === 0) { saveCache(); return result; }
     }
+    // FASE 28: mode cacheOnly — hanya cache + kamus, JANGAN panggil mesin
+    // online. Dipakai "Terapkan ke File": menerapkan daftar yang sudah
+    // diterjemahkan tanpa menerjemahkan ulang teks yang tidak ada di daftar
+    // (teks itu tetap Inggris dan dihitung gagal, supaya status jujur).
+    if (opts && opts.cacheOnly) {
+      for (const t of todo) result.set(t, { translated: t, fromCache: false, failed: true });
+      saveCache();
+      return result;
+    }
     // FASE 19: urutan mesin dibalik — mesin online (batch, cepat) dulu,
     // penerjemah bawaan Chrome (satu per satu, lambat) jadi cadangan.
     // Alasan: GameGlot membuktikan Google jalan dari PC ini; kalau mesin
@@ -1611,7 +1633,7 @@ const GT = (() => {
     const items = collectItems(doc, { twine: !!(opts && opts.twine) });
     const units = collectUnits(items);
     const uniqTexts = units.map((u) => u.text);
-    const result = await translateTexts(uniqTexts, src, tgt, { onProgress, onStatus, cancelled });
+    const result = await translateTexts(uniqTexts, src, tgt, { onProgress, onStatus, cancelled, cacheOnly: !!(opts && opts.cacheOnly) });
     const titleItem = items.find((i) => i.kind === 'title');
     let titleApplied = 0, titleCached = 0;
     if (titleItem) {
@@ -1649,7 +1671,7 @@ const GT = (() => {
 
     return { html: serializeDoc(doc), stats: { totalItems: items.length, uniqueTexts: uniqTexts.length, translated: applyInfo.applied + titleApplied, fromCache: applyInfo.cached + titleCached, failed: failedTexts.length, failedTexts }, failedTexts, result };
   }
-  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, saveCache, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel };
+  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, saveCache, cacheCap: CACHE_CAP, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel };
 })();
 window.GT = GT;
 
@@ -1716,7 +1738,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
   const cancelled = (opts && opts.cancelled) || { value: false };
   const onProgress = (opts && opts.onProgress) || (() => {});
   if (ext === 'html' || ext === 'htm') {
-    const out = await GT.translateFile({ text: async () => content, name: fileRec.name }, src, tgt, { twine: !!(opts && opts.twine), fixCss: !!(opts && opts.fixCss), cancelled, onProgress, onStatus: (opts && opts.onStatus) || (() => {}) });
+    const out = await GT.translateFile({ text: async () => content, name: fileRec.name }, src, tgt, { twine: !!(opts && opts.twine), fixCss: !!(opts && opts.fixCss), cacheOnly: !!(opts && opts.cacheOnly), cancelled, onProgress, onStatus: (opts && opts.onStatus) || (() => {}) });
     // Tambahan: terjemahkan juga string di dalam <script> inline. Teks game
     // sering tinggal di JavaScript (bukan di teks HTML yang terlihat), dan
     // GT.translateFile sengaja melewati <script> — tanpa ini game seperti
@@ -1732,7 +1754,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
         const ranges = extractQuotedRanges(s.textContent).filter((r) => looksTranslatable(r.text) && /\s/.test(r.text) && r.text.trim() !== 'use strict');
         if (!ranges.length) continue;
         for (const r of ranges) sUnique.add(r.text);
-        const r2 = await translateByRanges(s.textContent, ranges, src, tgt, { cancelled, onProgress });
+        const r2 = await translateByRanges(s.textContent, ranges, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
         s.textContent = r2.content;
         sApplied += r2.applied; sFailed += r2.failed; sCached += r2.cached;
         sFailedTexts.push(...r2.failedTexts);
@@ -1755,7 +1777,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
     try { obj = JSON.parse(content); } catch (e) { return { content, applied: 0, failed: 0, cached: 0, failedTexts: [], uniqueTexts: 0, error: 'JSON tidak valid' }; }
     const strings = []; walkJSON(obj, strings);
     const uniq = [...new Set(strings)];
-    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress });
+    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
     let applied = 0, failed = 0, cached = 0; const failedTexts = [];
     const walk = (v) => {
       if (typeof v === 'string') {
@@ -1780,14 +1802,14 @@ async function translateFileContent(fileRec, src, tgt, opts) {
       if (isTl && !/new\s*$/.test(line)) continue;
       if (looksTranslatable(r.text)) ranges.push(r);
     }
-    const out = await translateByRanges(content, ranges, src, tgt, { cancelled, onProgress });
+    const out = await translateByRanges(content, ranges, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
     return { ...out, uniqueTexts: [...new Set(ranges.map((r) => r.text))].length };
   }
   if (ext === 'po') {
     const pairs = []; const re = /(msgid\s+"((?:[^"\\]|\\.)*)"\s*\nmsgstr\s+")((?:[^"\\]|\\.)*)(")/g; let m;
     const uniq = [];
     while ((m = re.exec(content))) { const t = m[2].replace(/\\n/g, ' '); if (looksTranslatable(t) && !uniq.includes(t)) uniq.push(t); pairs.push({ msgid: t }); }
-    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress });
+    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
     let applied = 0, failed = 0, cached = 0; const failedTexts = [];
     const out = content.replace(/(msgid\s+"((?:[^"\\]|\\.)*)"\s*\nmsgstr\s+")((?:[^"\\]|\\.)*)(")/g, (all, pre, id, old, end) => {
       const t = id.replace(/\\n/g, ' ');
@@ -1810,7 +1832,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
       });
     });
     const uniq = [...new Set(cells.map((c) => c.text))];
-    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress });
+    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
     let applied = 0, failed = 0, cached = 0; const failedTexts = [];
     const newLines = lines.map((line, li) => {
       if (!line.trim()) return line;
@@ -1835,7 +1857,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
       });
     });
     const uniq = [...new Set(items.map((i) => i.original))];
-    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress });
+    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
     let applied = 0, failed = 0, cached = 0; const failedTexts = [];
     for (const it of items) {
       const r = res.get(it.original);
@@ -1847,7 +1869,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
   if (ext === 'txt' || ext === 'md') {
     const lines = content.split(/\r?\n/);
     const uniq = [...new Set(lines.map((l) => l.trim()).filter((t) => looksTranslatable(t)))];
-    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress });
+    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
     let applied = 0, failed = 0, cached = 0; const failedTexts = [];
     const out = lines.map((line) => {
       const t = line.trim();
@@ -1860,7 +1882,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
   }
   if (ext === 'js' || ext === 'mjs' || ext === 'gd' || ext === 'tscn' || ext === 'tres') {
     const ranges = extractQuotedRanges(content).filter((r) => looksTranslatable(r.text) && /\s/.test(r.text) && r.text.trim() !== 'use strict');
-    const out = await translateByRanges(content, ranges, src, tgt, { cancelled, onProgress });
+    const out = await translateByRanges(content, ranges, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
     return { ...out, uniqueTexts: [...new Set(ranges.map((r) => r.text))].length };
   }
   return { content, applied: 0, failed: 0, cached: 0, failedTexts: [], uniqueTexts: 0, error: 'Jenis file tidak didukung terjemahan' };
@@ -2295,9 +2317,11 @@ btnTranslateAll.addEventListener('click', () => runTranslation(allFiles.filter((
 /* ===== Daftar Teks (mode seperti Game Text Editor) =====
    Alur: tampilkan teks sebagai daftar bernomor -> terjemahkan daftar
    (kamus + Google) -> edit terjemahan -> terapkan. "Terapkan" menulis
-   terjemahan hasil edit ke GT.cache, sehingga saat "Terjemahkan Semua"
-   dijalankan, terjemahan editanmu yang dipakai (cache dicek paling dulu).
-   Hanya teks di daftar yang diterjemahkan; kode game tidak disentuh. */
+   terjemahan hasil edit ke GT.cache, lalu BENAR-BENAR menerjemahkan file
+   dengan mode cacheOnly (FASE 28) — hanya cache/kamus yang dipakai, tanpa
+   mesin online — sehingga file langsung jadi tanpa harus mengeklik
+   "Terjemahkan Semua" lagi. Hanya teks di daftar yang diterjemahkan;
+   kode game tidak disentuh. */
 let textListFile = null, textListStrings = [];
 // Pagination: hanya 200 baris yang dirender per halaman, supaya daftar besar
 // (mis. warung.html: 50.285 teks) tidak membekukan browser — versi lama
@@ -2458,6 +2482,7 @@ $('btnTranslateList').addEventListener('click', async () => {
   if (src === tgt) { $('textListStatus').textContent = 'Bahasa sumber dan target sama — pilih bahasa target yang berbeda.'; return; }
   textListSavePage(); // simpan edit manual di halaman aktif sebelum menimpa
   $('btnTranslateList').disabled = true;
+  $('btnApplyList').disabled = true; // FASE 28: jangan terapkan daftar yang masih setengah jalan
   $('btnCancelList').disabled = false; // FASE 20: bisa dibatalkan
   textListCancelFlag = { value: false };
   $('textListStatus').textContent = 'Menerjemahkan daftar (' + textListStrings.length + ' teks)...';
@@ -2485,12 +2510,25 @@ $('btnTranslateList').addEventListener('click', async () => {
     } else {
       $('textListStatus').textContent = 'Selesai: ' + filled + ' terisi, ' + failed + ' gagal. Edit yang kurang pas, lalu klik "Terapkan ke File".';
     }
+    // FASE 28: daftar besar melebihi cache browser — ingatkan soal Simpan Proyek.
+    if (textListStrings.length > GT.cacheCap || window.gtCacheFull) {
+      $('textListStatus').textContent += ' ⚠️ Daftar lebih besar dari cache browser (' + GT.cacheCap + ' teks) — hanya ' + GT.cacheCap + ' terjemahan terakhir yang tersimpan permanen. Klik "Simpan Proyek" (.json) supaya tidak hilang kalau halaman di-refresh.';
+    }
   } catch (e) { $('textListStatus').textContent = 'Gagal menerjemahkan daftar: ' + (e && e.message ? e.message : e); }
   $('btnTranslateList').disabled = false;
+  $('btnApplyList').disabled = false;
   $('btnCancelList').disabled = true;
 });
-$('btnApplyList').addEventListener('click', () => {
+// FASE 28: "Terapkan ke File" sekarang BENAR-BENAR menerapkan terjemahan
+// ke file (dulu hanya menulis ke cache, file baru jadi kalau pengguna
+// mengeklik "Terjemahkan Semua" lagi — itu yang membuat tombol ini terasa
+// "tidak terjadi apa-apa"). Caranya: terjemahan daftar ditulis ke cache,
+// lalu file diterjemahkan dengan mode cacheOnly — hanya cache/kamus yang
+// dipakai, tanpa mesin online — jadi hasilnya langsung jadi dan cepat.
+// Teks yang tidak ada di daftar tetap Inggris dan dihitung gagal.
+$('btnApplyList').addEventListener('click', async () => {
   if (!textListStrings.length) return;
+  if (!textListFile) { $('textListStatus').textContent = 'Pilih file dulu.'; return; }
   textListSavePage(); // simpan edit di halaman yang sedang tampil
   let applied = 0;
   textListStrings.forEach((s, i) => {
@@ -2498,12 +2536,34 @@ $('btnApplyList').addEventListener('click', () => {
     if (t && t !== s) { GT.cache.set(srcLang.value + '|' + tgtLang.value + '|' + s, t); applied++; }
   });
   if (applied) GT.saveCache();
-  if (applied) btnDownloadTl.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 21
-  if (applied) btnDownloadPoRenpy.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 27
-  if (applied) btnDownloadPo.disabled = !allFiles.some((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content); // FASE 24
-  $('textListStatus').textContent = applied
-    ? applied + ' terjemahan diterapkan ke file ' + (textListFile ? textListFile.path : '') + '. Saat kamu klik "Terjemahkan Semua" / "Terjemahkan yang dipilih", terjemahan editanmu inilah yang dipakai.'
-    : 'Tidak ada terjemahan yang diubah — isi dulu kolom Terjemahan (ID) atau klik "Terjemahkan Daftar".';
+  const src = srcLang.value, tgt = tgtLang.value;
+  $('btnApplyList').disabled = true; $('btnTranslateList').disabled = true;
+  $('textListStatus').textContent = 'Menerapkan ' + applied + ' terjemahan ke file ' + textListFile.path + '…';
+  setBar(0);
+  try {
+    const out = await translateFileContent(textListFile, src, tgt, {
+      twine: optTwine.checked, fixCss: $('optFixCss') ? $('optFixCss').checked : false,
+      cacheOnly: true, cancelled: { value: false },
+      onProgress: (done, total) => { setBar(total ? (done / total) * 100 : 0); $('textListStatus').textContent = 'Menerapkan ke file: ' + done + '/' + total + ' teks…'; }
+    });
+    textListFile.translatedContent = out.content;
+    textListFile.failedTexts = out.failedTexts || [];
+    textListFile.checkResult = null;
+    setBar(100);
+    btnDownload.disabled = false;
+    btnDownloadTl.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 21
+    btnDownloadPoRenpy.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 27
+    btnDownloadPo.disabled = !allFiles.some((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content); // FASE 24
+    btnCheckResult.disabled = false; btnRepair.disabled = false; btnReport.disabled = false;
+    log('Terapkan ke File: ' + textListFile.path + ' — ' + out.applied + ' diterapkan, ' + out.failed + ' belum ada di daftar.');
+    $('textListStatus').textContent = 'Selesai: ' + out.applied + ' terjemahan diterapkan ke file ' + textListFile.path + '.'
+      + (out.failed ? ' ' + out.failed + ' teks belum ada di daftar (tetap Inggris) — klik "Terjemahkan Semua" untuk sisanya.' : '')
+      + ' Klik "Download ZIP terjemahan" untuk mengunduh.';
+  } catch (e) {
+    $('textListStatus').textContent = 'Gagal menerapkan ke file: ' + (e && e.message ? e.message : e);
+    log('ERROR Terapkan ke File: ' + (e && e.stack ? e.stack : e));
+  }
+  $('btnApplyList').disabled = false; $('btnTranslateList').disabled = false;
 });
 // Download daftar teks sebagai file .txt (format nomor seperti Game Text Editor).
 $('btnDownloadList').addEventListener('click', () => {
