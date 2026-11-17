@@ -251,7 +251,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <button id="btnTranslateList" disabled>Terjemahkan Daftar</button>
       <button id="btnCancelList" disabled style="background:#ef4444;color:#fff">⏹ Batal</button>
       <button id="btnListCopyAll" style="background: #3b82f6; color: #fff;" disabled>📋 Salin Semua Asli ke Terjemahan</button>
-      <button id="btnApplyList" disabled>Terapkan ke File</button>
+      <button id="btnApplyList" disabled>Timpa File Asli</button>
       <button id="btnDownloadList" disabled>⬇ Download Daftar Teks (.txt)</button>
       <button id="btnUploadList" disabled>⬆ Upload Daftar Teks (.txt)</button>
       <input type="file" id="textListUpload" accept=".txt" style="display:none">
@@ -264,7 +264,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <ol class="howto">
       <li>Pilih file ZIP/APK, folder, atau banyak file game, lalu klik <b>Periksa Sekarang</b>.</li>
       <li>Centang file yang mau diterjemahkan, lalu klik <b>Terjemahkan yang dipilih</b> atau <b>Terjemahkan Semua</b>. Tunggu sampai selesai (file besar butuh waktu; butuh internet karena terjemahan lewat Google).</li>
-      <li>Untuk daftar besar, pakai <b>Daftar Teks</b>: pilih file, klik "Tampilkan Daftar Teks", lalu "Terjemahkan Daftar". Kalau sudah selesai, klik <b>Terapkan ke File</b> — file langsung jadi tanpa internet (hanya memakai terjemahan dari daftar), lalu unduh lewat <b>Download ZIP terjemahan</b>. Kalau daftar lebih besar dari 4000 teks, klik "Simpan Proyek" supaya terjemahan tidak hilang saat halaman di-refresh.</li>
+      <li>Untuk daftar besar, pakai <b>Daftar Teks</b>: pilih file, klik "Tampilkan Daftar Teks", lalu "Terjemahkan Daftar". Kalau sudah selesai, klik <b>Timpa File Asli</b> — file langsung jadi tanpa internet (hanya memakai terjemahan dari daftar), lalu unduh lewat <b>Download ZIP terjemahan</b>. Kalau daftar lebih besar dari 4000 teks, klik "Simpan Proyek" supaya terjemahan tidak hilang saat halaman di-refresh.</li>
       <li>Klik <b>Cek Hasil</b> untuk memeriksa macro, link, dan tag masih utuh. Kalau ada yang rusak, klik <b>Perbaiki</b>.</li>
       <li>Klik <b>Download ZIP terjemahan</b>, lalu ekstrak dan mainkan seperti biasa.</li>
       <li>Untuk game Ren'Py (.rpy): setelah diterjemahkan, klik <b>Download tl/id/ (Ren'Py)</b> — hasilnya folder <b>game/tl/id/</b> (format asli Ren'Py, file asli tidak diubah). Salin folder itu ke folder <b>game/</b> di game Ren'Py kamu, lalu pilih bahasa di Preferences &gt; Language.</li>
@@ -1387,7 +1387,7 @@ const GT = (() => {
       if (todo.length === 0) { saveCache(); return result; }
     }
     // FASE 28: mode cacheOnly — hanya cache + kamus, JANGAN panggil mesin
-    // online. Dipakai "Terapkan ke File": menerapkan daftar yang sudah
+    // online. Dipakai "Timpa File Asli": menerapkan daftar yang sudah
     // diterjemahkan tanpa menerjemahkan ulang teks yang tidak ada di daftar
     // (teks itu tetap Inggris dan dihitung gagal, supaya status jujur).
     if (opts && opts.cacheOnly) {
@@ -2228,7 +2228,7 @@ async function runTranslation(targets) {
   statusEl.style.color = ''; // Reset warna status (Dry Run memakai hijau/merah)
   if (src === tgt) { statusEl.textContent = 'Bahasa sumber dan target sama — pilih bahasa target yang berbeda.'; return; }
   if (!targets.length) { statusEl.textContent = 'Tidak ada file yang bisa diterjemahkan — centang dulu file yang didukung.'; return; }
-  window.gtMissingVarsReport = []; // Reset laporan variabel hilang (Fase 7) supaya laporan lama dari Terapkan ke File / retry tidak ikut terbawa
+  window.gtMissingVarsReport = []; // Reset laporan variabel hilang (Fase 7) supaya laporan lama dari Timpa File Asli / retry tidak ikut terbawa
   cancelFlag = { value: false };
   btnTranslateSel.disabled = true; btnTranslateAll.disabled = true; btnCancel.disabled = false;
   btnDownload.disabled = true; btnRetry.disabled = true; btnCheckResult.disabled = true; btnRepair.disabled = true; btnReport.disabled = true;
@@ -2508,7 +2508,7 @@ $('btnTranslateList').addEventListener('click', async () => {
     if (textListCancelFlag.value) {
       $('textListStatus').textContent = 'Dibatalkan — ' + filled + ' terisi. Yang sudah selesai tersimpan, klik "Terjemahkan Daftar" lagi untuk melanjutkan sisanya.';
     } else {
-      $('textListStatus').textContent = 'Selesai: ' + filled + ' terisi, ' + failed + ' gagal. Edit yang kurang pas, lalu klik "Terapkan ke File".';
+      $('textListStatus').textContent = 'Selesai: ' + filled + ' terisi, ' + failed + ' gagal. Edit yang kurang pas, lalu klik "Timpa File Asli".';
     }
     // FASE 28: daftar besar melebihi cache browser — ingatkan soal Simpan Proyek.
     if (textListStrings.length > GT.cacheCap || window.gtCacheFull) {
@@ -2519,7 +2519,7 @@ $('btnTranslateList').addEventListener('click', async () => {
   $('btnApplyList').disabled = false;
   $('btnCancelList').disabled = true;
 });
-// FASE 28: "Terapkan ke File" sekarang BENAR-BENAR menerapkan terjemahan
+// FASE 28: "Timpa File Asli" sekarang BENAR-BENAR menerapkan terjemahan
 // ke file (dulu hanya menulis ke cache, file baru jadi kalau pengguna
 // mengeklik "Terjemahkan Semua" lagi — itu yang membuat tombol ini terasa
 // "tidak terjadi apa-apa"). Caranya: terjemahan daftar ditulis ke cache,
@@ -2555,13 +2555,13 @@ $('btnApplyList').addEventListener('click', async () => {
     btnDownloadPoRenpy.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 27
     btnDownloadPo.disabled = !allFiles.some((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content); // FASE 24
     btnCheckResult.disabled = false; btnRepair.disabled = false; btnReport.disabled = false;
-    log('Terapkan ke File: ' + textListFile.path + ' — ' + out.applied + ' diterapkan, ' + out.failed + ' belum ada di daftar.');
+    log('Timpa File Asli: ' + textListFile.path + ' — ' + out.applied + ' diterapkan, ' + out.failed + ' belum ada di daftar.');
     $('textListStatus').textContent = 'Selesai: ' + out.applied + ' terjemahan diterapkan ke file ' + textListFile.path + '.'
       + (out.failed ? ' ' + out.failed + ' teks belum ada di daftar (tetap Inggris) — klik "Terjemahkan Semua" untuk sisanya.' : '')
       + ' Klik "Download ZIP terjemahan" untuk mengunduh.';
   } catch (e) {
     $('textListStatus').textContent = 'Gagal menerapkan ke file: ' + (e && e.message ? e.message : e);
-    log('ERROR Terapkan ke File: ' + (e && e.stack ? e.stack : e));
+    log('ERROR Timpa File Asli: ' + (e && e.stack ? e.stack : e));
   }
   $('btnApplyList').disabled = false; $('btnTranslateList').disabled = false;
 });
@@ -2622,7 +2622,7 @@ function parseTextList(txt) {
   return out.filter((r) => r.en !== null && r.en.trim() !== '');
 }
 // Upload daftar teks yang sudah diterjemahkan di luar app: isi kembali kolom
-// terjemahan di daftar (dicocokkan dengan teks EN), lalu klik "Terapkan ke File".
+// terjemahan di daftar (dicocokkan dengan teks EN), lalu klik "Timpa File Asli".
 $('btnUploadList').addEventListener('click', () => $('textListUpload').click());
 $('textListUpload').addEventListener('change', async (e) => {
   const f = e.target.files && e.target.files[0];
@@ -2644,7 +2644,7 @@ $('textListUpload').addEventListener('change', async (e) => {
     filled++;
   }
   renderTextList(); // tampilkan hasil impor di halaman saat ini
-  $('textListStatus').textContent = 'Daftar diimpor dari ' + f.name + ': ' + filled + ' terjemahan dimasukkan ke daftar, ' + skipped + ' dilewati (kosong / belum diterjemahkan / teks EN tidak cocok). Periksa sebentar, lalu klik "Terapkan ke File" untuk menerapkan ke file game.';
+  $('textListStatus').textContent = 'Daftar diimpor dari ' + f.name + ': ' + filled + ' terjemahan dimasukkan ke daftar, ' + skipped + ' dilewati (kosong / belum diterjemahkan / teks EN tidak cocok). Periksa sebentar, lalu klik "Timpa File Asli" untuk menerapkan ke file game.';
 });
 btnCancel.addEventListener('click', () => { cancelFlag.value = true; statusEl.textContent = 'Membatalkan…'; });
 btnClearCache.addEventListener('click', () => {
