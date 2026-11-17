@@ -2566,18 +2566,32 @@ $('btnApplyList').addEventListener('click', async () => {
   $('btnApplyList').disabled = false; $('btnTranslateList').disabled = false;
 });
 // Download daftar teks sebagai file .txt (format nomor seperti Game Text Editor).
-$('btnDownloadList').addEventListener('click', () => {
+// FASE 29: dulu handler ini sinkron dan memanggil textListGet(i) (= querySelector)
+// untuk SETIAP teks — pada daftar 15.898 teks halaman membeku ~8 detik dan
+// tombol terasa "tidak berfungsi". Sekarang async + bertahap: status langsung
+// tampil, terjemahan dibaca dari textListEdits (halaman aktif sudah disimpan
+// oleh textListSavePage), dan jeda revoke diperpanjang ke 60 detik supaya
+// unduhan blob besar (~10 MB) tidak terpotong.
+$('btnDownloadList').addEventListener('click', async () => {
   if (!textListStrings.length) return;
   textListSavePage(); // simpan edit di halaman yang sedang tampil
+  const total = textListStrings.length;
+  $('textListStatus').textContent = 'Menyiapkan daftar teks (' + total + ' teks)…';
+  await new Promise((r) => setTimeout(r, 30)); // biarkan status tampil dulu
   const lines = [];
   const srcLbl = (srcLang.value || 'en').toUpperCase();
   const tgtLbl = (tgtLang.value || 'id').toUpperCase();
-  textListStrings.forEach((s, i) => {
-    const t = textListGet(i);
+  for (let i = 0; i < total; i++) {
+    const s = textListStrings[i];
+    const t = (textListEdits[i] || '').trim();
     lines.push('----------' + (i + 1));
     lines.push(srcLbl + ': ' + s);
     lines.push(tgtLbl + ': ' + (t || '(belum diterjemahkan)'));
-  });
+    if (i % 2000 === 1999) {
+      $('textListStatus').textContent = 'Menyiapkan daftar teks… ' + (i + 1) + '/' + total;
+      await new Promise((r) => setTimeout(r, 0)); // jeda supaya halaman tidak beku
+    }
+  }
   const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a');
   const base = (textListFile ? textListFile.path.split('/').pop().replace(/\.[^.]+$/, '') : 'daftar-teks') || 'daftar-teks';
@@ -2585,8 +2599,8 @@ $('btnDownloadList').addEventListener('click', () => {
   a.download = base + '-daftar-teks.txt';
   document.body.appendChild(a);
   a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-  $('textListStatus').textContent = 'Daftar teks (' + textListStrings.length + ' teks) diunduh sebagai ' + a.download + '.';
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
+  $('textListStatus').textContent = 'Daftar teks (' + total + ' teks) diunduh sebagai ' + a.download + '.';
 });
 // Parse file daftar teks (.txt) hasil download: ----------N, "XX: ...", "YY: ...".
 // Teks sumber/target boleh multi-baris; baris setelah "XX: " sampai "YY: "
@@ -2690,7 +2704,7 @@ btnDownload.addEventListener('click', async () => {
       a.href = URL.createObjectURL(blob);
       a.download = base + '-ID.html';
       document.body.appendChild(a); a.click();
-      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
       statusEl.textContent = 'File terjemahan di-download sebagai ' + base + '-ID.html';
       return;
     }
@@ -2712,7 +2726,7 @@ btnDownload.addEventListener('click', async () => {
     a.href = URL.createObjectURL(blob);
     a.download = lastZipName + '-ID.zip';
     document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
     statusEl.textContent = 'ZIP terjemahan di-download sebagai ' + lastZipName + '-ID.zip (nama file di dalamnya tidak diubah; file asli ikut disimpan sebagai .orig).';
   } catch (e) {
     statusEl.textContent = 'Gagal download: ' + (e && e.message ? e.message : e);
@@ -2746,7 +2760,7 @@ btnDownloadTl.addEventListener('click', async () => {
     a.href = URL.createObjectURL(blob);
     a.download = 'game-tl-' + tgt + '.zip';
     document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
     const total = say + strings;
     statusEl.textContent = 'tl/' + tgt + ' di-download (' + files + ' file .rpy, ' + say + ' dialog, ' + strings + ' teks UI; ' + translated + '/' + total + ' sudah diterjemahkan). Salin folder game/tl/' + tgt + '/ ke folder game/ di game Ren\'Py kamu, lalu pilih bahasanya di Preferences > Language.' + (translated < total ? ' Teks yang belum diterjemahkan masih tampil bahasa asli.' : '');
     log('Export tl/' + tgt + ': ' + files + ' file, ' + say + ' blok dialog, ' + strings + ' entri strings, ' + translated + '/' + total + ' terisi dari cache.');
@@ -2766,7 +2780,7 @@ btnDownloadPoRenpy.addEventListener('click', () => {
   a.href = URL.createObjectURL(blob);
   a.download = 'renpy-' + tgt + '.po';
   document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
   statusEl.textContent = 'File renpy-' + tgt + '.po di-download (' + built.stringCount + ' teks dari ' + built.fileCount + ' file .rpy). Isi msgstr-nya kosong — terjemahkan file ini di Poedit atau upload lagi ke web app, lalu klik Download tl/id/ untuk memakai terjemahannya.';
   log('Buat .po Ren\'Py: ' + built.stringCount + ' teks dari ' + built.fileCount + ' file -> renpy-' + tgt + '.po');
 });
@@ -2781,7 +2795,7 @@ btnDownloadPo.addEventListener('click', () => {
   a.href = URL.createObjectURL(blob);
   a.download = tgt + '.po';
   document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
   statusEl.textContent = 'File ' + tgt + '.po di-download (' + built.stringCount + ' teks dari ' + built.fileCount + ' file source Godot). Isi msgstr-nya kosong — terjemahkan file ini (upload lagi ke web app, atau pakai Poedit), lalu daftarkan di Godot: Project Settings > Localization > Translations.';
   log('Buat .po Godot: ' + built.stringCount + ' teks dari ' + built.fileCount + ' file -> ' + tgt + '.po');
 });
@@ -2800,7 +2814,7 @@ btnReport.addEventListener('click', () => {
   a.href = URL.createObjectURL(blob);
   a.download = 'laporan-bahasa-game.txt';
   document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
 });
 /* ================= FITUR SIMPAN / MUAT PROYEK ================= */
 /* Simpan hasil scan, editan manual, dan cache ke file .json supaya tidak
@@ -2832,7 +2846,7 @@ $('btnSaveProject').addEventListener('click', () => {
   a.href = URL.createObjectURL(blob);
   a.download = (lastZipName || 'proyek-terjemahan') + '-proyek.json';
   document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
   statusEl.textContent = 'Proyek berhasil disimpan ke ' + a.download;
 });
 
@@ -2905,7 +2919,7 @@ $('btnDownloadLog').addEventListener('click', () => {
   a.href = URL.createObjectURL(blob);
   a.download = logFileName();
   document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
   $('logStatus').textContent = 'Log di-download sebagai ' + a.download + ' — kirim file itu ke Rio.';
 });
 $('btnCopyLog').addEventListener('click', async () => {
