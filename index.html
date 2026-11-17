@@ -213,6 +213,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <button id="btnRetry" disabled>↻ Ulangi file yang bermasalah</button>
       <button id="btnDownload" disabled>⬇ Download ZIP terjemahan</button>
       <button id="btnDownloadTl" disabled>⬇ Download tl/id/ (Ren'Py)</button>
+      <button id="btnDownloadPoRenpy" disabled>📄 Buat .po (Ren'Py)</button>
       <button id="btnDownloadPo" disabled>📄 Buat .po (Godot)</button>
       <button id="btnReport" disabled>Download Laporan (.txt)</button>
     </div>
@@ -266,6 +267,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Klik <b>Cek Hasil</b> untuk memeriksa macro, link, dan tag masih utuh. Kalau ada yang rusak, klik <b>Perbaiki</b>.</li>
       <li>Klik <b>Download ZIP terjemahan</b>, lalu ekstrak dan mainkan seperti biasa.</li>
       <li>Untuk game Ren'Py (.rpy): setelah diterjemahkan, klik <b>Download tl/id/ (Ren'Py)</b> — hasilnya folder <b>game/tl/id/</b> (format asli Ren'Py, file asli tidak diubah). Salin folder itu ke folder <b>game/</b> di game Ren'Py kamu, lalu pilih bahasa di Preferences &gt; Language.</li>
+      <li>Untuk game Ren'Py (.rpy): mau terjemah di Poedit? Klik <b>Buat .po (Ren'Py)</b> — hasilnya file <b>renpy-id.po</b> berisi semua dialog dan teks UI. Terjemahkan di Poedit (atau upload lagi ke web app), lalu klik <b>Download tl/id/ (Ren'Py)</b> untuk memakai terjemahannya.</li>
       <li>Untuk game Godot (source .gd/.tscn/.tres): klik <b>Buat .po (Godot)</b> — hasilnya file <b>id.po</b> berisi semua teks dari <b>tr()</b> dan properti text di scene (msgstr masih kosong). Terjemahkan file .po itu (upload lagi ke web app, atau pakai Poedit), lalu daftarkan di Godot: Project Settings &gt; Localization &gt; Translations.</li>
       <li>Terjemahan berjalan <b>paralel (3 batch sekaligus)</b> supaya daftar besar lebih cepat — matikan lewat checkbox "Terjemahan paralel" di Pengaturan Lanjutan kalau Google mulai menolak (429). Macro Twine yang hanya mencetak teks (print, button, link, dialog, <b>&lt;&lt;= ...&gt;&gt;</b>) ikut diterjemahkan; macro kode (set, if, widget, dll.) dilewati.</li>
       <li>Kalau hasil terjemahan kehilangan variabel (mis. {gold}, %s, [item]), web app <b>memperbaikinya otomatis</b>: hanya bagian kalimatnya yang diterjemahkan ulang, variabel aslinya disambung kembali (ala Fallowborn). Kalau Google gagal membaca satu batch, dicoba lagi dengan format marker sebelum pindah ke mesin lain.</li>
@@ -653,8 +655,18 @@ function extractFromRpy(text) {
   return dedupeKeepOrder(out);
 }
 function extractFromPo(text) {
-  const out = []; const re = /msgid\s+"((?:[^"\\]|\\.)*)"/g; let m;
-  while ((m = re.exec(text))) { const s = m[1].replace(/\\n/g, ' '); if (looksTranslatable(s)) out.push(s.trim().replace(/\s+/g, ' ')); }
+  const out = [];
+  // FASE 27: msgid bisa dibungkus beberapa baris (gettext: msgid ""
+  // "bagian1" "bagian2" untuk string panjang). Tangkap SEMUA string kutip
+  // setelah msgid lalu gabung — kalau tidak, string panjang yang dibungkus
+  // (mis. dari .po Godot/Ren'Py) terbaca kosong saat di-upload kembali.
+  const re = /msgid\s+((?:"(?:[^"\\]|\\.)*"\s*)+)/g; let m;
+  while ((m = re.exec(text))) {
+    const parts = m[1].match(/"((?:[^"\\]|\\.)*)"/g) || [];
+    let s = parts.map((p) => p.slice(1, -1)).join('');
+    s = s.replace(/\\n/g, ' ');
+    if (looksTranslatable(s)) out.push(s.trim().replace(/\s+/g, ' '));
+  }
   return dedupeKeepOrder(out);
 }
 function extractFromCsv(text) {
@@ -1950,6 +1962,7 @@ const srcLang = $('srcLang'), tgtLang = $('tgtLang'), optTwine = $('optTwine'), 
 const btnCheck = $('btnCheck'), btnTranslateSel = $('btnTranslateSel'), btnTranslateAll = $('btnTranslateAll'), btnDryRun = $('btnDryRun');
 const btnCancel = $('btnCancel'), btnDownload = $('btnDownload'), btnRetry = $('btnRetry'), btnClearCache = $('btnClearCache');
 const btnDownloadTl = $('btnDownloadTl');
+const btnDownloadPoRenpy = $('btnDownloadPoRenpy');
 const btnDownloadPo = $('btnDownloadPo');
 const btnCheckResult = $('btnCheckResult'), btnRepair = $('btnRepair'), btnReport = $('btnReport');
 const barWrap = $('barWrap'), bar = $('bar'), statusEl = $('status'), logEl = $('log');
@@ -2103,6 +2116,7 @@ btnCheck.addEventListener('click', async () => {
     log('Selesai: ' + summary.totalStrings + ' teks di ' + summary.filesWithText + ' file.');
     $('btnSaveProject').disabled = false; // Aktifkan tombol simpan
     btnDownloadPo.disabled = !allFiles.some((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content); // FASE 24: .po hanya untuk source Godot
+    btnDownloadPoRenpy.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 27: .po Ren'Py hanya untuk game Ren'Py
     $('resultCard').scrollIntoView({ behavior: 'smooth' });
   } catch (e) {
     statusEl.textContent = 'Gagal: ' + (e && e.message ? e.message : e);
@@ -2256,6 +2270,7 @@ async function runTranslation(targets) {
     $('translateCard').style.display = 'block';
     btnDownload.disabled = false;
     btnDownloadTl.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 21: tl/ hanya untuk game Ren'Py
+    btnDownloadPoRenpy.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 27
     btnDownloadPo.disabled = !allFiles.some((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content); // FASE 24
     btnRetry.disabled = allFailed.length === 0;
     btnCheckResult.disabled = false;
@@ -2484,6 +2499,7 @@ $('btnApplyList').addEventListener('click', () => {
   });
   if (applied) GT.saveCache();
   if (applied) btnDownloadTl.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 21
+  if (applied) btnDownloadPoRenpy.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 27
   if (applied) btnDownloadPo.disabled = !allFiles.some((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content); // FASE 24
   $('textListStatus').textContent = applied
     ? applied + ' terjemahan diterapkan ke file ' + (textListFile ? textListFile.path : '') + '. Saat kamu klik "Terjemahkan Semua" / "Terjemahkan yang dipilih", terjemahan editanmu inilah yang dipakai.'
@@ -2679,6 +2695,21 @@ btnDownloadTl.addEventListener('click', async () => {
   }
 });
 /* FASE 24 — Buat .po dari source Godot (pybabel-godot). */
+btnDownloadPoRenpy.addEventListener('click', () => {
+  const tgt = tgtLang.value;
+  const rpyFiles = allFiles.filter((f) => f.ext === 'rpy' && f.content !== null && f.content !== undefined);
+  if (!rpyFiles.length) { statusEl.textContent = 'Tidak ada file .rpy.'; return; }
+  const built = renpyPoBuild(rpyFiles, tgt);
+  if (!built) { statusEl.textContent = 'Tidak ada teks Ren\'Py yang bisa dibuat .po-nya.'; return; }
+  const blob = new Blob([built.content], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'renpy-' + tgt + '.po';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  statusEl.textContent = 'File renpy-' + tgt + '.po di-download (' + built.stringCount + ' teks dari ' + built.fileCount + ' file .rpy). Isi msgstr-nya kosong — terjemahkan file ini di Poedit atau upload lagi ke web app, lalu klik Download tl/id/ untuk memakai terjemahannya.';
+  log('Buat .po Ren\'Py: ' + built.stringCount + ' teks dari ' + built.fileCount + ' file -> renpy-' + tgt + '.po');
+});
 btnDownloadPo.addEventListener('click', () => {
   const tgt = tgtLang.value;
   const godotFiles = allFiles.filter((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content !== null && f.content !== undefined);
@@ -3672,6 +3703,106 @@ function godotPoBuild(files, lang) {
   return { content: out.join('\n') + '\n', stringCount: map.size, fileCount };
 }
 
+/* ================= FASE 27: Buat .po (Ren'Py), ala Monika ================= */
+/* Monika mengekspor terjemahan Ren'Py ke .po supaya bisa diterjemahkan di
+   Poedit/CAT tool, lalu diimpor kembali. Di web app alurnya: .rpy -> .po
+   (tombol ini) -> terjemahkan .po itu (upload lagi ke web app, atau Poedit)
+   -> Download tl/id/ memakai terjemahan dari cache.
+   msgid = teks ASLI .rpy (rec.rawWhat / s.raw, BUKAN hasil decode) supaya
+   kunci cache-nya sama persis dengan yang dipakai renpyTlBuild saat lookup.
+   Escape-nya dibuat khusus agar extractFromPo mengembalikan teks asli:
+   newline/tab/CR asli -> \n/\t/\r (extractFromPo mengubah \n jadi spasi,
+   sama seperti normalisasi whitespace di extractFromRpy); tanda kutip yang
+   belum di-escape -> \"; backslash dibiarkan apa adanya (extractFromPo
+   menangkap pasangan \. apa adanya, jadi \" tetap \" — kalau dipakai
+   godotPoEscape yang menggandakan backslash, round-trip-nya rusak).
+   Batasan: teks yang mengandung urutan escape \n (backslash+n) tidak
+   round-trip sempurna lewat .po (extractFromPo mengubahnya jadi spasi) —
+   teks seperti itu tetap bisa diterjemahkan lewat Daftar Teks biasa. */
+function renpyPoEscape(s) {
+  return s.replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t')
+    .replace(/(^|[^\\])"/g, '$1\\"');
+}
+// Membungkus string .po yang SUDAH di-escape (gettext style, <= 76 karakter/baris).
+function poWrap(esc) {
+  if (esc.length <= 76) return '"' + esc + '"';
+  const parts = [];
+  let cur = '';
+  const words = esc.split(/(?<= )|(?= )/);
+  for (const w of words) {
+    if ((cur + w).length > 76 && cur) { parts.push(cur); cur = w; }
+    else cur += w;
+  }
+  if (cur) parts.push(cur);
+  if (!parts.length) return '""';
+  return '""\n' + parts.map((p) => '"' + p + '"').join('\n');
+}
+// Builds a .po file from Ren'Py .rpy files (via renpyScanTl, sama seperti tl/).
+// files: [{ path, content }]. lang: target language code ('id').
+// Returns { content, stringCount, fileCount } or null when nothing found.
+function renpyPoBuild(files, lang) {
+  const map = new Map(); // key = msgid -> { text, locs: [] }
+  let fileCount = 0;
+  for (const f of files) {
+    if (!f.content) continue;
+    const scanned = renpyScanTl(f.content, looksTranslatable);
+    if (!scanned.say.length && !scanned.strings.length) continue;
+    fileCount++;
+    for (const rec of scanned.say) {
+      const key = rec.rawWhat;
+      let e = map.get(key);
+      if (!e) { e = { text: key, locs: [] }; map.set(key, e); }
+      e.locs.push(f.path + ':' + rec.srcLine);
+    }
+    for (const s of scanned.strings) {
+      const key = s.raw;
+      let e = map.get(key);
+      if (!e) { e = { text: key, locs: [] }; map.set(key, e); }
+      e.locs.push(f.path + ':' + s.srcLine);
+    }
+  }
+  if (!map.size) return null;
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + '+0000';
+  const out = [];
+  out.push('# Ren\'Py translation file — dibuat oleh Game Translate Gabungan.');
+  out.push('# Terjemahkan msgstr di Poedit atau upload kembali ke web app,');
+  out.push('# lalu Download tl/id/ untuk memakai terjemahannya.');
+  out.push('#');
+  out.push('#, fuzzy');
+  out.push('msgid ""');
+  out.push('msgstr ""');
+  out.push('"Project-Id-Version: Ren\'Py translation\\n"');
+  out.push('"Report-Msgid-Bugs-To: \\n"');
+  out.push('"POT-Creation-Date: ' + stamp + '\\n"');
+  out.push('"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\\n"');
+  out.push('"Last-Translator: FULL NAME <EMAIL@ADDRESS>\\n"');
+  out.push('"Language-Team: LANGUAGE <LL@li.org>\\n"');
+  out.push('"Language: ' + lang + '\\n"');
+  out.push('"MIME-Version: 1.0\\n"');
+  out.push('"Content-Type: text/plain; charset=UTF-8\\n"');
+  out.push('"Content-Transfer-Encoding: 8bit\\n"');
+  for (const e of map.values()) {
+    out.push('');
+    let locLine = '#: ' + e.locs.join(' ');
+    if (locLine.length > 100) {
+      const chunks = [];
+      let cur = '#:';
+      for (const loc of e.locs) {
+        if ((cur + ' ' + loc).length > 100 && cur !== '#:') { chunks.push(cur); cur = '#:'; }
+        cur += ' ' + loc;
+      }
+      chunks.push(cur);
+      locLine = chunks.join('\n');
+    }
+    out.push(locLine);
+    out.push('msgid ' + poWrap(renpyPoEscape(e.text)));
+    out.push('msgstr ""');
+  }
+  return { content: out.join('\n') + '\n', stringCount: map.size, fileCount };
+}
+
 window.GTGabungan = {
   looksTranslatable, detectLang, isLangFile, analyzeFile, scanFiles,
   extractFromHTML, extractFromJSON, extractFromRpy, extractFromPo, extractFromCsv, extractFromXml,
@@ -3682,6 +3813,7 @@ window.GTGabungan = {
   renpyEscapeBadPercent, renpySayGetCode, renpyBlockDigest, renpyComputeIdentifier,
   renpyExtractSaySuffix, renpyNormaliseLine, renpyIsTechnicalString,
   renpyLogicalLines, renpyScanTl, renpyTlBuild, renpyTlPath,
+  renpyPoBuild, renpyPoEscape, poWrap,
   godotParseGdStrings, godotExtractTscn, godotPoBuild, godotPoEscape
 };
 </script>
