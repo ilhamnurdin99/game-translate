@@ -268,6 +268,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Untuk game Ren'Py (.rpy): setelah diterjemahkan, klik <b>Download tl/id/ (Ren'Py)</b> — hasilnya folder <b>game/tl/id/</b> (format asli Ren'Py, file asli tidak diubah). Salin folder itu ke folder <b>game/</b> di game Ren'Py kamu, lalu pilih bahasa di Preferences &gt; Language.</li>
       <li>Untuk game Godot (source .gd/.tscn/.tres): klik <b>Buat .po (Godot)</b> — hasilnya file <b>id.po</b> berisi semua teks dari <b>tr()</b> dan properti text di scene (msgstr masih kosong). Terjemahkan file .po itu (upload lagi ke web app, atau pakai Poedit), lalu daftarkan di Godot: Project Settings &gt; Localization &gt; Translations.</li>
       <li>Terjemahan berjalan <b>paralel (3 batch sekaligus)</b> supaya daftar besar lebih cepat — matikan lewat checkbox "Terjemahan paralel" di Pengaturan Lanjutan kalau Google mulai menolak (429). Macro Twine yang hanya mencetak teks (print, button, link, dialog, <b>&lt;&lt;= ...&gt;&gt;</b>) ikut diterjemahkan; macro kode (set, if, widget, dll.) dilewati.</li>
+      <li>Kalau hasil terjemahan kehilangan variabel (mis. {gold}, %s, [item]), web app <b>memperbaikinya otomatis</b>: hanya bagian kalimatnya yang diterjemahkan ulang, variabel aslinya disambung kembali (ala Fallowborn). Kalau Google gagal membaca satu batch, dicoba lagi dengan format marker sebelum pindah ke mesin lain.</li>
     </ol>
     <p class="hint">Mesin terjemahan: kamus bawaan (istilah game umum, offline) → Google Translate → endpoint Chrome → Microsoft Edge → penerjemah bawaan Chrome (PC, offline setelah model terunduh) → MyMemory. Teks yang sudah diterjemahkan tersimpan otomatis di cache browser — kalau proses dihentikan (tombol Batal) atau browser ditutup, klik "Terjemahkan Daftar" lagi nanti dan teks yang sudah selesai langsung terisi dari cache, hanya sisanya yang diterjemahkan. Kode game (script, style, nama variable) tidak disentuh. Teks di dalam gambar/canvas tidak bisa diterjemahkan.</p>
   </section>
@@ -901,7 +902,10 @@ async function translateSegment(text, src, tgt, translateTexts) {
   const plain = segs.filter((s) => s.translatable && /[A-Za-z]/.test(s.text) && s.text.trim().length >= 2);
   if (!plain.length) return { text, failed: false };
   const uniq = [...new Set(plain.map((s) => s.text))];
-  const res = await translateTexts(uniq, src, tgt, {});
+  // FASE 26: panggilan dalam ini TIDAK menjalankan repair segmen
+  // (allowSegmentRepair: false) — translateSegment SUDAH memisah segmen,
+  // dan repair di dalamnya akan memanggil translateSegment lagi (rekursi).
+  const res = await translateTexts(uniq, src, tgt, { allowSegmentRepair: false });
   let failed = false;
   let out = segs.map((s) => {
     if (!s.translatable) return s.text;
@@ -1216,6 +1220,38 @@ const GT = (() => {
     if (!out) throw new Error('GoogleDict: format balasan tidak dikenal');
     return out;
   }
+  // FASE 26 (Fallowborn): batch Google dengan marker — banyak teks digabung
+  // jadi SATU parameter q, dipisah marker ZXQSEP00000QXZ, ZXQSEP00001QXZ, ...
+  // Marker adalah omong kosong yang Google biarkan utuh, jadi hasil bisa
+  // dipotong kembali dengan pasti (urutan dijamin). Dipakai sebagai cadangan
+  // kalau format multi-q gagal total (semua entri null) — BUKAN kalau 429,
+  // karena marker lewat endpoint yang sama dan juga akan kena 429.
+  const MARKER = (i) => 'ZXQSEP' + String(i).padStart(5, '0') + 'QXZ';
+  async function googleBatchMarkers(texts, src, tgt) {
+    const parts = [];
+    for (let i = 0; i < texts.length; i++) { parts.push(MARKER(i), texts[i]); }
+    parts.push(MARKER(texts.length));
+    const params = new URLSearchParams();
+    params.append('client', 'gtx'); params.append('sl', src); params.append('tl', tgt); params.append('dt', 't');
+    params.append('q', parts.join('\n'));
+    const res = await fetch('https://translate.googleapis.com/translate_a/single?' + params.toString());
+    if (!res.ok) throw new Error('Google HTTP ' + res.status);
+    const data = await res.json();
+    const arr = data && data[0];
+    if (!Array.isArray(arr)) throw new Error('GoogleMarkers: format balasan tidak dikenal');
+    let joined = '';
+    for (const chunk of arr) {
+      if (!Array.isArray(chunk)) continue;
+      for (const seg of chunk) if (Array.isArray(seg) && seg[0]) joined += seg[0];
+    }
+    const out = [];
+    for (let i = 0; i < texts.length; i++) {
+      const a = joined.indexOf(MARKER(i)), b = joined.indexOf(MARKER(i + 1));
+      if (a < 0 || b < 0 || b <= a) throw new Error('GoogleMarkers: marker hilang');
+      out.push(joined.slice(a + MARKER(i).length, b).replace(/^\s+/, '').replace(/\s+$/, ''));
+    }
+    return out;
+  }
   // FASE 19: Penerjemah Microsoft Edge — mesin yang sama dipakai GameGlot
   // (selain Google gtx + dict). Gratis, tanpa kunci, batch (banyak teks
   // sekali POST), dan bukan layanan Google jadi tidak kena batas 429-nya.
@@ -1373,6 +1409,16 @@ const GT = (() => {
           try { out = await googleBatch(batch, src, tgt); engine = 'google'; googleStreak = 0; break; }
           catch (e) { if (!isRetryable(e)) break; await sleep(1000 * (attempt + 1)); }
         }
+        // FASE 26 (Fallowborn): kalau multi-q mengembalikan semua null
+        // (format balasan rusak), coba sekali dengan format marker sebelum
+        // pindah ke dict. Kalau gagal juga, out jadi null dan lanjut ke dict.
+        if (out && out.every((x) => !x)) {
+          try {
+            const m = await googleBatchMarkers(batch, src, tgt);
+            if (m && m.some((x) => x)) { out = m; engine = 'google'; googleStreak = 0; }
+            else out = null;
+          } catch (e) { out = null; }
+        }
         if (!out) { googleStreak++; if (googleStreak >= 3) googleDown = true; }
       }
       if (!out && !dictDown) {
@@ -1447,6 +1493,31 @@ const GT = (() => {
         await sleep(200);
       }
       saveCache();
+    }
+    // FASE 26 (Fallowborn translate_by_segments): perbaiki hasil yang
+    // kehilangan variabel — terjemahkan ulang HANYA bagian prosanya, lalu
+    // sambung kembali variabel/tag asli di tempatnya. Deterministik:
+    // variabel tidak pernah hilang. Ini mengubah peringatan FASE 7
+    // (getMissingVars) jadi perbaikan otomatis. Hanya untuk teks yang
+    // berhasil diterjemah tapi variabelnya hilang; teks yang gagal total
+    // dibiarkan gagal. Panggilan dalam memakai allowSegmentRepair: false
+    // supaya tidak rekursi (translateSegment -> translateTexts -> repair).
+    if (!cancelled.value && (!opts || opts.allowSegmentRepair !== false)) {
+      const needRepair = [];
+      for (const [t, r] of result) {
+        if (!r.failed && r.translated !== t && getMissingVars(t, r.translated).length > 0) needRepair.push(t);
+      }
+      for (const t of needRepair) {
+        if (cancelled.value) break;
+        try {
+          const fixed = await translateSegment(t, src, tgt, (ts, s, g, o) => translateTexts(ts, s, g, Object.assign({}, o, { allowSegmentRepair: false, onProgress: () => {}, onStatus: () => {}, cancelled })));
+          if (getMissingVars(t, fixed.text).length === 0 && fixed.text !== t) {
+            result.set(t, { translated: fixed.text, fromCache: false, failed: false });
+            cache.set(cacheKey(src, tgt, t), fixed.text);
+          }
+        } catch (e) { /* biarkan hasil lama */ }
+      }
+      if (needRepair.length) saveCache();
     }
     return result;
   }
@@ -1566,7 +1637,7 @@ const GT = (() => {
 
     return { html: serializeDoc(doc), stats: { totalItems: items.length, uniqueTexts: uniqTexts.length, translated: applyInfo.applied + titleApplied, fromCache: applyInfo.cached + titleCached, failed: failedTexts.length, failedTexts }, failedTexts, result };
   }
-  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, edgeBatch, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, saveCache, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel };
+  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, saveCache, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel };
 })();
 window.GT = GT;
 
@@ -3604,7 +3675,7 @@ function godotPoBuild(files, lang) {
 window.GTGabungan = {
   looksTranslatable, detectLang, isLangFile, analyzeFile, scanFiles,
   extractFromHTML, extractFromJSON, extractFromRpy, extractFromPo, extractFromCsv, extractFromXml,
-  extractQuotedRanges, protectSegments, translateSegment, decodeHTMLEntities, encodeHTMLEntities,
+  extractQuotedRanges, protectSegments, translateSegment, getMissingVars, decodeHTMLEntities, encodeHTMLEntities,
   splitMacroToken, macroQuoteTranslatable, isDangerousMacro,
   translateFileContent, checkTranslated, repairFile, compiledHint, kindLabel,
   renpyMd5, renpyLexerDecode, renpyPyDecode, renpyEncodeSayString, renpyStringQuote,
