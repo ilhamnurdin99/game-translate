@@ -231,7 +231,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <button id="btnDownloadTl" disabled>⬇ Download tl/id/ (Ren'Py)</button>
       <button id="btnDownloadPoRenpy" disabled>📄 Buat .po (Ren'Py)</button>
       <button id="btnDownloadPo" disabled>📄 Buat .po (Godot)</button>
+      <button id="btnDownloadTmx" disabled>⬇ Download TMX</button>
       <button id="btnReport" disabled>Download Laporan (.txt)</button>
+      <button id="btnDownloadQa" disabled>Download Laporan QA (.md)</button>
     </div>
     <div id="checkOut" style="margin-top:10px"></div>
     <p class="hint">Nama file di dalam ZIP hasil <b>tidak diubah</b> — sama seperti aslinya, struktur folder juga sama. Hanya isi teksnya yang diterjemahkan. File yang tidak didukung disalin apa adanya supaya gamenya tetap jalan.</p>
@@ -252,6 +254,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <option value="untranslated">Belum Diterjemahkan</option>
         <option value="translated">Sudah Diterjemahkan</option>
         <option value="failed">Hanya yang Gagal (Variabel Hilang)</option>
+        <option value="qa">Bermasalah QA (FASE 38)</option>
       </select>
     </div>
     <div id="textListWrap" style="margin-top:10px; max-height:420px; overflow:auto; border:1px solid #e2e8f0; border-radius:8px"></div>
@@ -290,6 +293,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Punya API key sendiri (Groq, OpenRouter, DeepSeek, dll.)? Aktifkan <b>provider custom</b> di Pengaturan Lanjutan — isi alamat API, key, dan nama model, lalu klik "Uji Provider". Provider custom dipakai pertama sebelum mesin gratis; key hanya tersimpan di browser ini.</li>
       <li>Kalau hasil terjemahan kehilangan variabel (mis. {gold}, %s, [item]), web app <b>memperbaikinya otomatis</b>: hanya bagian kalimatnya yang diterjemahkan ulang, variabel aslinya disambung kembali (ala Fallowborn). Kalau Google gagal membaca satu batch, dicoba lagi dengan format marker sebelum pindah ke mesin lain.</li>
       <li>Penjaga anti-halusinasi (FASE 31): kalau mesin mengembalikan string sampah yang sama untuk banyak teks berbeda, atau class CSS diterjemahkan, hasilnya <b>ditolak dan tidak disimpan</b> — teksnya ditandai gagal supaya bisa diulang lewat mesin lain, bukan merusak game.</li>
+      <li>QA per teks (FASE 38): setelah diterjemahkan, klik <b>Cek Hasil</b> — tiap pasangan sumber→target diperiksa: variabel, tag, angka, tanda baca akhir, spasi/newline, kata berulang, glosarium, dan rasio panjang (di luar 0,4–2,5x). Baris bermasalah di <b>Daftar Teks</b> ditandai ⚠ dan bisa disaring lewat filter "Bermasalah QA"; laporan lengkap bisa diunduh lewat <b>Download Laporan QA (.md)</b>. QA hanya peringatan — Timpa/Download tetap jalan.</li>
+      <li>Perbaikan variabel otomatis (FASE 39): kalau ada terjemahan yang kehilangan variabel, klik <b>Perbaiki</b> — variabel yang hilang disisipkan kembali dari teks aslinya (di posisi yang sama kalau bisa ditebak), lalu file dibangun ulang, jadi tidak lagi dikembalikan ke asli hanya karena variabel hilang. Saat <b>Timpa File Asli</b> pun variabel diperbaiki dulu sebelum ditempel ke file.</li>
+      <li>Saran fuzzy (FASE 38): saat "Terjemahkan Daftar", teks yang tidak ada di cache persis dicarikan terjemahan mirip dari cache (≥80%) — ditandai ≈87% dan <b>perlu ditinjau</b>, bukan terjemahan final. Terjemahan yang sudah bersih QA bisa diekspor sebagai memori terjemahan lewat <b>Download TMX</b> (file <b>id.tmx</b>) — bisa dibuka di OmegaT, Trados, atau memoQ, dan dipakai lagi saat game update.</li>
     </ol>
     <p class="hint">Mesin terjemahan: provider custom (kalau diaktifkan) → kamus bawaan (istilah game umum, offline) → Google Translate → endpoint Chrome → Microsoft Edge → penerjemah bawaan Chrome (PC, offline setelah model terunduh) → MyMemory. Teks yang sudah diterjemahkan tersimpan otomatis di cache browser (4000 terjemahan terakhir) — kalau proses dihentikan (tombol Batal), klik "Terjemahkan Daftar" lagi nanti dan teks yang sudah selesai langsung terisi dari cache, hanya sisanya yang diterjemahkan. Untuk daftar lebih besar dari 4000 teks, klik "Simpan Proyek" (.json) supaya tidak hilang kalau halaman di-refresh. Kode game (script, style, nama variable) tidak disentuh. Teks di dalam gambar/canvas tidak bisa diterjemahkan.</p>
   </section>
@@ -1242,6 +1248,45 @@ async function translateSegment(text, src, tgt, translateTexts) {
   return { text: out, failed };
 }
 
+/* ================= FASE 38: fuzzy match (ala OmegaT) =================
+   similarity(a, b) -> skor 0-100: normalisasi dulu (trim + ciutkan spasi
+   + lowercase), lalu Levenshtein. Dipakai translateTexts (opts.fuzzy)
+   untuk menyarankan terjemahan dari cache yang mirip — BUKAN pengganti
+   cache persis dan BUKAN terjemahan final (hasilnya berstatus 'fuzzy',
+   tidak dicache, dan harus ditinjau — lihat qaCheck 'fuzzy-review'). */
+function levenshtein(a, b, maxDist) {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  // Early exit: kalau jarak minimum baris sudah melebihi maxDist, tidak
+  // mungkin lagi di bawah ambang — kembalikan maxDist+1 (dipakai fuzzy).
+  const limit = (maxDist == null) ? Infinity : maxDist;
+  let prev = new Array(n + 1), cur = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    let rowMin = cur[0];
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      if (cur[j] < rowMin) rowMin = cur[j];
+    }
+    if (rowMin > limit) return limit + 1;
+    const tmp = prev; prev = cur; cur = tmp;
+  }
+  return prev[n];
+}
+function normalizeFuzzy(s) { return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+function similarity(a, b) {
+  const na = normalizeFuzzy(a), nb = normalizeFuzzy(b);
+  if (na === nb) return 100;
+  const max = Math.max(na.length, nb.length);
+  if (!max) return 100;
+  return Math.max(0, Math.round(100 * (1 - levenshtein(na, nb) / max)));
+}
+function escapeRegExp(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function xmlEscape(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;'); }
+
 /* ================= Bagian 2: mesin terjemahan (Chrome bawaan -> Google -> MyMemory) ================= */
 const GT = (() => {
   const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'CODE', 'PRE', 'SVG', 'IFRAME', 'OBJECT', 'EMBED']);
@@ -1257,6 +1302,16 @@ const GT = (() => {
   const MAX_Q = 10;
   const MAX_CHARS = 1000;
   const BATCH_DELAY = 300;
+  // FASE 38: ambang fuzzy match (ala OmegaT). Teks yang tidak ada di cache
+  // persis dicarikan terjemahan dari cache yang kemiripannya >= ambang ini.
+  // Hasilnya saran (status 'fuzzy', skor ditampilkan, tidak dicache) — ubah
+  // angka ini kalau saran terasa terlalu longgar/ketat.
+  const FUZZY_THRESHOLD = 80;
+  // Batas kandidat per teks (pengaman performa): kandidat diurutkan dulu
+  // (kata sama terbanyak, lalu selisih panjang terkecil) baru dihitung
+  // Levenshtein-nya. Di game nyata kandidat yang lolos pra-filter hanya
+  // segelintir, jadi batas ini praktis tidak pernah kena.
+  const FUZZY_MAX_CANDIDATES = 100;
   // FASE 25: batch paralel (ala OctopusBridge — 100 baris/batch, beberapa
   // batch paralel, ~28.600 baris/menit). Web app tetap pakai batch kecil
   // (10 teks / 1000 karakter, FASE 23) supaya tidak diblokir Google, tapi
@@ -1322,6 +1377,76 @@ const GT = (() => {
     if (nk !== text) keys.push(cacheKey(s, t, nk));
     for (const k of keys) if (cache.has(k)) return cache.get(k);
     return null;
+  }
+  // FASE 38: fuzzy match atas cache (ala OmegaT). fuzzyLookup mengembalikan
+  // { translated, score, source } dari entri cache yang kemiripannya >=
+  // FUZZY_THRESHOLD, atau null. Pra-filter supaya cepat di cache besar:
+  // hanya kandidat yang panjangnya dalam rasio 0,5-2,0x DAN berbagi minimal
+  // 1 kata bermakna (>= 4 karakter) dengan teks sumber — JANGAN bandingkan
+  // semua pasangan (cache bisa 60.000 entri, daftar 15.000 teks). Indeks kata
+  // dibangun sekali per panggilan translateTexts (lazy, lalu dibuang).
+  function parseCacheEntry(key) {
+    const parts = key.split('|');
+    if (parts.length < 3) return null;
+    if (parts.length >= 4) return { s: parts[0], t: parts[1], scope: parts[2], text: parts.slice(3).join('|') };
+    return { s: parts[0], t: parts[1], scope: null, text: parts.slice(2).join('|') };
+  }
+  const FUZZY_WORD_RE = /[^a-z0-9\u00c0-\u024f]+/g;
+  function fuzzyWords(norm) { return norm.split(FUZZY_WORD_RE).filter((w) => w.length >= 4); }
+  let fuzzyIndex = null; // { src, tgt, byWord: Map<kata, idx[]>, cands: [{text, translation, norm}] }
+  function buildFuzzyIndex(src, tgt) {
+    if (fuzzyIndex && fuzzyIndex.src === src && fuzzyIndex.tgt === tgt) return fuzzyIndex;
+    const byWord = new Map(); const cands = [];
+    for (const [k, v] of cache.entries()) {
+      const e = parseCacheEntry(k);
+      if (!e || e.s !== src || e.t !== tgt || !e.text || !v) continue;
+      const norm = normalizeFuzzy(e.text);
+      if (norm.length < 4) continue;
+      const idx = cands.length;
+      cands.push({ text: e.text, translation: v, norm });
+      for (const w of new Set(fuzzyWords(norm))) {
+        if (!byWord.has(w)) byWord.set(w, []);
+        byWord.get(w).push(idx);
+      }
+    }
+    fuzzyIndex = { src, tgt, byWord, cands };
+    return fuzzyIndex;
+  }
+  function fuzzyLookup(src, tgt, text) {
+    const norm = normalizeFuzzy(text);
+    if (norm.length < 4) return null;
+    const words = fuzzyWords(norm);
+    if (!words.length) return null;
+    const idx = buildFuzzyIndex(src, tgt);
+    // Hitung kata sama per kandidat (hampir gratis — dari daftar indeks
+    // kata), urutkan, ambil maksimal FUZZY_MAX_CANDIDATES terbaik.
+    const shared = new Map();
+    for (const w of words) { const list = idx.byWord.get(w); if (list) for (const i of list) shared.set(i, (shared.get(i) || 0) + 1); }
+    const ranked = [...shared.entries()].sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return Math.abs(idx.cands[a[0]].norm.length - norm.length) - Math.abs(idx.cands[b[0]].norm.length - norm.length);
+    }).slice(0, FUZZY_MAX_CANDIDATES).map((e) => e[0]);
+    let best = null;
+    for (const i of ranked) {
+      const c = idx.cands[i];
+      if (c.text === text) continue; // yang persis sudah ditangani cacheLookup
+      const ratio = c.norm.length / norm.length;
+      if (ratio < 0.5 || ratio > 2.0) continue;
+      // Skor >= ambang berarti jarak edit <= 20% panjang — Levenshtein
+      // berhenti dini (early exit) kalau sudah jelas di bawah ambang.
+      const maxLen = Math.max(norm.length, c.norm.length);
+      const maxDist = Math.floor((100 - FUZZY_THRESHOLD) / 100 * maxLen);
+      const d = levenshtein(norm, c.norm, maxDist);
+      if (d > maxDist) continue;
+      const score = Math.round(100 * (1 - d / maxLen));
+      if (score >= FUZZY_THRESHOLD && (!best || score > best.score)) {
+        // FASE 31 aturan 1 tetap berlaku: jangan sarankan string sampah
+        // yang kebetulan tersimpan di cache lama (sebelum FASE 31).
+        if (isHallucinatedOutput(c.translation, text)) continue;
+        best = { translated: c.translation, score, source: c.text };
+      }
+    }
+    return best;
   }
   // Kamus bawaan Inggris -> Indonesia. Dicek dulu sebelum Google, jadi
   // istilah game yang umum tetap diterjemahkan walau Google diblokir, lambat,
@@ -1970,6 +2095,23 @@ const GT = (() => {
       saveCache();
       return result;
     }
+    // FASE 38: fuzzy match (hanya kalau opts.fuzzy — dipakai "Terjemahkan
+    // Daftar"). Teks yang lolos dari cache+kamus dicarikan saran dari cache
+    // yang mirip (>= FUZZY_THRESHOLD). Saran TIDAK dicache dan TIDAK dikirim
+    // ke mesin — statusnya 'fuzzy' + skor, supaya pengguna meninjaunya dulu
+    // (qaCheck 'fuzzy-review'). TIDAK jalan di mode cacheOnly: Timpa tidak
+    // boleh menerapkan saran yang belum ditinjau.
+    if (opts && opts.fuzzy && todo.length) {
+      fuzzyIndex = null; // indeks dibangun dari cache saat ini
+      const rest3 = [];
+      for (const u of todo) {
+        const fz = fuzzyLookup(src, tgt, u.text);
+        if (fz) result.set(u.key, { translated: fz.translated, fromCache: false, failed: false, fromFuzzy: true, fuzzyScore: fz.score, fuzzySource: fz.source });
+        else rest3.push(u);
+      }
+      todo.length = 0; todo.push(...rest3);
+      onProgress(units.length - todo.length, units.length, 'fuzzy');
+    }
     // FASE 19: urutan mesin dibalik — mesin online (batch, cepat) dulu,
     // penerjemah bawaan Chrome (satu per satu, lambat) jadi cadangan.
     // Alasan: GameGlot membuktikan Google jalan dari PC ini; kalau mesin
@@ -2136,7 +2278,10 @@ const GT = (() => {
       const needRepair = [];
       for (const u of units) {
         const r = result.get(u.key);
-        if (r && !r.failed && r.translated !== u.text && getMissingVars(u.text, r.translated).length > 0) needRepair.push(u);
+        // FASE 38: saran fuzzy JANGAN diperbaiki mesin — itu saran untuk
+        // ditinjau, bukan hasil final; repair akan menimpanya dengan hasil
+        // mesin dan menghilangkan status 'fuzzy'-nya.
+        if (r && !r.failed && !r.fromFuzzy && r.translated !== u.text && getMissingVars(u.text, r.translated).length > 0) needRepair.push(u);
       }
       for (const u of needRepair) {
         if (cancelled.value) break;
@@ -2180,14 +2325,22 @@ const GT = (() => {
           for (let i = 0; i < item.depth; i++) built = encodeHTMLEntities(built);
         }
 
-        // Cek variabel hilang (patch fase 7) — bandingkan teks asli
-        // dengan hasil akhir (setelah re-encode) yang akan ditulis.
+        // FASE 39: perbaiki variabel hilang SEBELUM ditempel ke file —
+        // bandingkan teks asli dengan hasil akhir (setelah re-encode).
+        // Yang berhasil diperbaiki otomatis tidak lagi dilaporkan; laporan
+        // "Ada teks yang kehilangan variabel!" hanya berisi yang tidak bisa
+        // diperbaiki. Pola token sama dengan QA (termasuk %(name)s, \n, $var).
         if (changed) {
           const origFull = item.segments.map(s => s.text).join('');
-          const missing = getMissingVars(origFull, built);
-          if (missing.length > 0) {
+          const rep39 = repairMissingVars(origFull, built);
+          if (rep39.fixed.length) {
+            built = rep39.text;
+            window.gtVarsAutoFixed = (window.gtVarsAutoFixed || 0) + 1;
+          }
+          const stillMissing = missingVarOccurrences(origFull, built).missing;
+          if (stillMissing.length > 0) {
             if (!window.gtMissingVarsReport) window.gtMissingVarsReport = [];
-            window.gtMissingVarsReport.push({ orig: origFull, trans: built, missing: missing });
+            window.gtMissingVarsReport.push({ orig: origFull, trans: built, missing: [...new Set(stillMissing.map((m) => m.token))] });
           }
         }
 
@@ -2195,25 +2348,33 @@ const GT = (() => {
       } else if (item.kind === 'attr') {
         const r = result.get(unitKey(fileScopeArg, item.original));
         if (r && !r.failed && r.translated !== item.original) {
-          // Cek variabel hilang (Fase 7) — atribut diterjemahkan utuh
-          // tanpa perlindungan placeholder, jadi Google bisa menghapusnya.
-          const missing = getMissingVars(item.original, r.translated);
-          if (missing.length > 0) {
+          // FASE 39: atribut diterjemahkan utuh tanpa perlindungan
+          // placeholder, jadi Google bisa menghapus variabelnya — perbaiki
+          // dulu sebelum ditempel; hanya yang tidak bisa diperbaiki yang
+          // dilaporkan.
+          const rep39 = repairMissingVars(item.original, r.translated);
+          const finalTr = rep39.fixed.length ? rep39.text : r.translated;
+          if (rep39.fixed.length) window.gtVarsAutoFixed = (window.gtVarsAutoFixed || 0) + 1;
+          const stillMissing = missingVarOccurrences(item.original, finalTr).missing;
+          if (stillMissing.length > 0) {
             if (!window.gtMissingVarsReport) window.gtMissingVarsReport = [];
-            window.gtMissingVarsReport.push({ orig: item.original, trans: r.translated, missing: missing });
+            window.gtMissingVarsReport.push({ orig: item.original, trans: finalTr, missing: [...new Set(stillMissing.map((m) => m.token))] });
           }
-          item.el.setAttribute(item.attr, r.translated); applied++; if (r.fromCache) cached++;
+          item.el.setAttribute(item.attr, finalTr); applied++; if (r.fromCache) cached++;
         }
         else if (r && r.failed) failed++;
       } else if (item.kind === 'title') {
         const r = result.get(unitKey(fileScopeArg, item.original));
         if (r && !r.failed && r.translated !== item.original) {
-          const missing = getMissingVars(item.original, r.translated);
-          if (missing.length > 0) {
+          const rep39 = repairMissingVars(item.original, r.translated);
+          const finalTr = rep39.fixed.length ? rep39.text : r.translated;
+          if (rep39.fixed.length) window.gtVarsAutoFixed = (window.gtVarsAutoFixed || 0) + 1;
+          const stillMissing = missingVarOccurrences(item.original, finalTr).missing;
+          if (stillMissing.length > 0) {
             if (!window.gtMissingVarsReport) window.gtMissingVarsReport = [];
-            window.gtMissingVarsReport.push({ orig: item.original, trans: r.translated, missing: missing });
+            window.gtMissingVarsReport.push({ orig: item.original, trans: finalTr, missing: [...new Set(stillMissing.map((m) => m.token))] });
           }
-          item.docTitle = r.translated; applied++; if (r.fromCache) cached++;
+          item.docTitle = finalTr; applied++; if (r.fromCache) cached++;
         }
         else if (r && r.failed) failed++;
       }
@@ -2280,7 +2441,7 @@ const GT = (() => {
 
     return { html: serializeDoc(doc), stats: { totalItems: items.length, uniqueTexts: uniqTexts.length, translated: applyInfo.applied + titleApplied, fromCache: applyInfo.cached + titleCached, failed: failedTexts.length, failedTexts }, failedTexts, result };
   }
-  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, customBatch, setCustomProvider, parseCustomResponse, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, cacheKeyScoped, cacheLookup, unitKey, saveCache, cacheCap: CACHE_CAP, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel, isHallucinatedOutput, isCssClassList, isDangerousMacro, macroQuoteTranslatable, codeContainerEnd };
+  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, customBatch, setCustomProvider, parseCustomResponse, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, cacheKeyScoped, cacheLookup, unitKey, saveCache, cacheCap: CACHE_CAP, fuzzyThreshold: FUZZY_THRESHOLD, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel, isHallucinatedOutput, isCssClassList, isDangerousMacro, macroQuoteTranslatable, codeContainerEnd };
 })();
 window.GT = GT;
 
@@ -2548,6 +2709,382 @@ async function translateFileContent(fileRec, src, tgt, opts) {
   return { content, applied: 0, failed: 0, cached: 0, failedTexts: [], uniqueTexts: 0, error: 'Jenis file tidak didukung terjemahan' };
 }
 /* ================= Bagian 4: cek hasil & perbaiki ================= */
+/* ================= FASE 38: QA ala locqa (cek per teks) =================
+   qaCheck(source, target, opts) -> array {code, severity, detail}.
+   Murni + sinkron (cepat, tanpa jaringan) — dipakai badge Daftar Teks dan
+   Cek Hasil. Mengikuti AnyTool Translation QA Sheet (9 cek mekanis) +
+   ide 'riset renpy' (variabel/tag/glosarium/overflow). Semua cek bersifat
+   advisory (ala wxrks): TIDAK memblokir Timpa/Download, hanya peringatan.
+   Cek 'overflow' pixel-perfect TIDAK dibangun — lebar kotak dialog tiap
+   game beda-beda dan font asli game tidak tersedia di web app; penggantinya
+   cek rasio panjang (0,4-2,5x) sebagai peringatan.
+   Pola token variabel SAMA dengan protectSegments/getMissingVars supaya
+   konsisten dengan perlindungan saat terjemah. */
+const QA_CODE_LABELS = {
+  'untranslated': 'Belum diterjemahkan', 'same-as-source': 'Sama dengan sumber',
+  'variables': 'Variabel hilang/berlebih', 'tags': 'Tag tidak seimbang',
+  'numbers': 'Angka berubah', 'punctuation': 'Tanda baca akhir beda',
+  'whitespace': 'Spasi/newline berubah', 'repeated-word': 'Kata berulang',
+  'glossary': 'Glosarium tidak konsisten', 'length-ratio': 'Rasio panjang di luar 0,4–2,5x',
+  'fuzzy-review': 'Saran fuzzy — perlu ditinjau'
+};
+// Token variabel: {tag}, [var], %s/%d/%1$s/%(name)s, \n, $var — kecuali tag
+// format {b}/{i}/{color}/{size}/{a} yang ditangani cek 'tags' (cek 3).
+const QA_VAR_RE = /\{[^}]*\}|\[[^\]]*\]|%(\d+\$)?[sd]|%\([^)]+\)[sd]|\\n|\$[A-Za-z_][\w]*/g;
+const QA_TAG_BRACE_RE = /^\{\/?(b|i|color|size|a)\b/;
+const QA_TAG_RE = /\{\/?(b|i|color|size|a)(?:=[^}]*)?\}|<\/?(b|i|u|strong|em|br)\s*\/?>/gi;
+const QA_NUM_RE = /\b\d+(?:[.,]\d+)?\b/g;
+const QA_REPEAT_RE = /([\p{L}\d']{2,})\s+\1\b/giu;
+function qaTokenList(s, re) { return (String(s).match(re) || []); }
+function qaMultisetDiff(a, b) {
+  const count = (arr) => { const m = new Map(); for (const x of arr) m.set(x, (m.get(x) || 0) + 1); return m; };
+  const ma = count(a), mb = count(b); const missing = [], extra = [];
+  for (const [k, v] of ma) { const d = v - (mb.get(k) || 0); for (let i = 0; i < d; i++) missing.push(k); }
+  for (const [k, v] of mb) { const d = v - (ma.get(k) || 0); for (let i = 0; i < d; i++) extra.push(k); }
+  return { missing: [...new Set(missing)], extra: [...new Set(extra)] };
+}
+function qaEndPunct(x) {
+  const t = String(x).trim().replace(/["'”’)\]]+$/, '');
+  if (t.endsWith('...') || t.endsWith('…')) return '...';
+  const c = t.slice(-1);
+  return (c === '.' || c === '!' || c === '?') ? c : '';
+}
+function qaCheck(source, target, opts) {
+  const s = String(source || ''), t = String(target || '');
+  const o = opts || {};
+  const issues = [];
+  // 1. Belum diterjemahkan (target kosong). Cek lain tidak bermakna.
+  if (!t.trim()) { issues.push({ code: 'untranslated', severity: 'error', detail: 'Terjemahan masih kosong.' }); return issues; }
+  // 4. Sama persis dengan sumber (bisa sah untuk nama/istilah — warning).
+  if (s.trim() === t.trim()) issues.push({ code: 'same-as-source', severity: 'warning', detail: 'Terjemahan sama persis dengan teks asli.' });
+  // 2. Variabel hilang/berlebih (token selain tag format).
+  const varDiff = qaMultisetDiff(
+    qaTokenList(s, QA_VAR_RE).filter((tok) => !QA_TAG_BRACE_RE.test(tok)),
+    qaTokenList(t, QA_VAR_RE).filter((tok) => !QA_TAG_BRACE_RE.test(tok)));
+  if (varDiff.missing.length || varDiff.extra.length) {
+    const detail = (varDiff.missing.length ? 'Hilang: ' + varDiff.missing.join(', ') : '') + (varDiff.missing.length && varDiff.extra.length ? '; ' : '') + (varDiff.extra.length ? 'Berlebih: ' + varDiff.extra.join(', ') : '');
+    issues.push({ code: 'variables', severity: varDiff.missing.length ? 'error' : 'warning', detail });
+  }
+  // 3. Tag {b}/{i}/{color}/{size}/{a} + HTML <b>/<i>/<br> tidak seimbang.
+  const normTag = (tok) => {
+    if (tok[0] === '<') return tok.replace(/[<\/>\s]/g, '').toLowerCase();
+    const m = /^\{\/?([a-z]+)/i.exec(tok);
+    return (tok[1] === '/' ? '/' : '') + (m ? m[1].toLowerCase() : tok);
+  };
+  const tagDiff = qaMultisetDiff(qaTokenList(s, QA_TAG_RE).map(normTag), qaTokenList(t, QA_TAG_RE).map(normTag));
+  if (tagDiff.missing.length || tagDiff.extra.length) {
+    const detail = (tagDiff.missing.length ? 'Hilang: ' + tagDiff.missing.join(', ') : '') + (tagDiff.missing.length && tagDiff.extra.length ? '; ' : '') + (tagDiff.extra.length ? 'Berlebih: ' + tagDiff.extra.join(', ') : '');
+    issues.push({ code: 'tags', severity: 'error', detail });
+  }
+  // 5. Angka berubah. Angka dibandingkan tanpa pemisah ribuan/desimal
+  // ('1.000' vs '1,000' dianggap sama — penulisan lokal beda, nilainya sama).
+  // Angka yang menempel kata (MP3, v2) diabaikan — \b tidak cocok di sana.
+  const normNum = (x) => x.replace(/[.,]/g, '');
+  const numDiff = qaMultisetDiff(qaTokenList(s, QA_NUM_RE).map(normNum), qaTokenList(t, QA_NUM_RE).map(normNum));
+  if (numDiff.missing.length || numDiff.extra.length) {
+    const detail = (numDiff.missing.length ? 'Hilang: ' + numDiff.missing.join(', ') : '') + (numDiff.missing.length && numDiff.extra.length ? '; ' : '') + (numDiff.extra.length ? 'Berlebih: ' + numDiff.extra.join(', ') : '');
+    issues.push({ code: 'numbers', severity: numDiff.missing.length ? 'error' : 'warning', detail });
+  }
+  // 6. Tanda baca akhir beda.
+  const ps = qaEndPunct(s), pt = qaEndPunct(t);
+  if (ps !== pt) issues.push({ code: 'punctuation', severity: 'warning', detail: ps ? (pt ? 'Akhir "' + ps + '" jadi "' + pt + '"' : 'Tanda "' + ps + '" di akhir hilang') : 'Tanda "' + pt + '" di akhir bertambah' });
+  // 7. Spasi/newline berubah (spasi awal/akhir, jumlah \n).
+  const wsDiffs = [];
+  if (s.startsWith(' ') !== t.startsWith(' ')) wsDiffs.push('spasi awal');
+  if (s.endsWith(' ') !== t.endsWith(' ')) wsDiffs.push('spasi akhir');
+  const nlS = s.split('\n').length - 1, nlT = t.split('\n').length - 1;
+  if (nlS !== nlT) wsDiffs.push('newline ' + nlS + ' → ' + nlT);
+  if (wsDiffs.length) issues.push({ code: 'whitespace', severity: 'warning', detail: 'Berubah: ' + wsDiffs.join(', ') + '.' });
+  // 8. Kata berulang di target (yang tidak ada di sumber).
+  const repT = [...t.matchAll(QA_REPEAT_RE)].map((m) => m[1].toLowerCase());
+  const repS = new Set([...s.matchAll(QA_REPEAT_RE)].map((m) => m[1].toLowerCase()));
+  const repNew = [...new Set(repT)].filter((w) => !repS.has(w));
+  if (repNew.length) issues.push({ code: 'repeated-word', severity: 'warning', detail: 'Kata berulang: "' + repNew.slice(0, 3).join('", "') + '".' });
+  // 9. Glosarium tidak konsisten — istilah di sumber yang padanannya tidak
+  // muncul di target. Hanya istilah yang ada di sumber yang dicek.
+  // indexOf dulu sebagai pra-filter cepat (substring harus ada sebelum
+  // regex \b dicek) supaya daftar 15 ribu baris tetap cepat.
+  const gloss = (o.glossary || []);
+  const glossBad = [];
+  const sLower = s.toLowerCase(), tLower = t.toLowerCase();
+  for (const g of gloss) {
+    if (sLower.indexOf(g.term) === -1) continue;
+    if (!g.re.test(s)) continue;
+    if (!tLower.includes(g.expected.toLowerCase())) glossBad.push('"' + g.term + '" → "' + g.expected + '"');
+    if (glossBad.length >= 3) break;
+  }
+  if (glossBad.length) issues.push({ code: 'glossary', severity: 'warning', detail: 'Istilah tidak sesuai glosarium: ' + glossBad.join('; ') + '.' });
+  // 10. Rasio panjang di luar 0,4–2,5x (warning; string pendek dilewati).
+  const lenS = s.trim().length, lenT = t.trim().length;
+  if (lenS >= 10) {
+    const ratio = lenT / lenS;
+    if (ratio < 0.4 || ratio > 2.5) issues.push({ code: 'length-ratio', severity: 'warning', detail: 'Panjang ' + ratio.toFixed(1).replace('.', ',') + 'x dari aslinya (di luar 0,4–2,5x).' });
+  }
+  // Saran fuzzy di bawah 95% wajib ditinjau (di atas itu dianggap cukup mirip).
+  if (o.fuzzyScore != null && o.fuzzyScore < 95) issues.push({ code: 'fuzzy-review', severity: 'warning', detail: 'Saran fuzzy ≈' + o.fuzzyScore + '% — perlu ditinjau sebelum dipakai.' });
+  return issues;
+}
+/* ================= FASE 39: perbaikan variabel hilang (otomatis) =================
+   repairMissingVars(source, target) -> {text, fixed, method}.
+   Murni + sinkron. Untuk tiap variabel yang hilang di terjemahan, sisipkan
+   kembali persis seperti di teks asli. Nama variabel TIDAK pernah
+   diterjemahkan — {name} tetap {name}; kalau mesin mengubahnya jadi
+   {nama}, itu dianggap hilang dan dikembalikan ke aslinya.
+   Pola token SAMA dengan qaCheck (QA_VAR_RE): {tag}, [var], %s/%d/%1$s/
+   %(name)s, \n, $var — kecuali tag format {b}/{i}/{color}/{size}/{a}
+   yang ditangani cek 'tags', bukan di sini, dan kecuali sintaks link
+   Twine [[label->target]] (FASE 32: labelnya memang diterjemahkan,
+   jadi bukan variabel yang hilang). (getMissingVars lama TIDAK diubah —
+   polanya lebih sempit dan dipakai FASE 7/26; repairMissingVars memakai
+   pola QA yang lebih lengkap supaya yang diperbaiki persis yang ditandai
+   QA sebagai 'variables'.)
+   Posisi penyisipan mengikuti posisi relatif di teks asli: di awal ->
+   di awal terjemahan; di akhir -> sebelum tanda baca penutup; di tengah
+   -> posisi relatif yang sama (berdasarkan jumlah kata). Kalau tidak bisa
+   ditebak, taruh di akhir kalimat sebelum tanda baca penutup. Beberapa
+   variabel hilang disisipkan dengan urutan yang sama seperti di aslinya.
+   Nama variabel yang diterjemahkan mesin hanya diganti di tempat kalau
+   token penggantinya berada di posisi relatif yang mirip (selisih <= 0,25
+   panjang teks) — kalau jauh, itu token lain, bukan nama variabel yang
+   diterjemahkan, dan variabelnya disisipkan saja.
+   Variabel BERLEBIH (ada di terjemahan tapi tidak di aslinya) TIDAK
+   dihapus otomatis — tetap jadi peringatan QA. Teks tanpa variabel dan
+   terjemahan kosong tidak diubah. */
+// Semua kemunculan token variabel (bukan tag format, bukan link Twine)
+// beserta posisinya.
+function varOccurrences(str) {
+  const re = new RegExp(QA_VAR_RE.source, 'g');
+  const out = []; let m;
+  while ((m = re.exec(str)) !== null) {
+    if (m[0].startsWith('[[')) continue; // link Twine [[label->target]] — bukan variabel
+    if (!QA_TAG_BRACE_RE.test(m[0])) out.push({ token: m[0], index: m.index });
+  }
+  return out;
+}
+// Kemunculan variabel sumber yang tidak punya padanan di target (multiset,
+// urut) + token berlebih di target (tidak ada di sumber sama sekali).
+// Dipakai repairMissingVars dan laporan variabel hilang (FASE 7).
+function missingVarOccurrences(source, target) {
+  const s = String(source || ''), t = String(target || '');
+  if (!s || !t) return { missing: [], extra: [] };
+  const srcOcc = varOccurrences(s);
+  const free = varOccurrences(t).map((o) => ({ token: o.token, index: o.index, used: false }));
+  const missing = [];
+  for (const o of srcOcc) {
+    const j = free.findIndex((x) => !x.used && x.token === o.token);
+    if (j >= 0) free[j].used = true; else missing.push({ token: o.token, index: o.index });
+  }
+  const srcSet = new Set(srcOcc.map((o) => o.token));
+  const extra = free.filter((x) => !x.used && !srcSet.has(x.token));
+  return { missing, extra };
+}
+function shapeOfVar(tok) {
+  if (tok[0] === '{') return 'brace';
+  if (tok[0] === '[') return 'bracket';
+  if (tok[0] === '%') return 'percent';
+  if (tok[0] === '$') return 'dollar';
+  return 'other'; // \n
+}
+// Sisipkan token pada posisi pos, dengan spasi seperlunya (tidak menempel
+// kata, tidak ada spasi sebelum tanda baca).
+function insertTokenAt(text, pos, token) {
+  const before = text.slice(0, pos), after = text.slice(pos);
+  const spB = (before.length && !/\s$/.test(before)) ? ' ' : '';
+  const spA = (after.length && !/^\s/.test(after) && !/^[.,!?;:'"”’)…\]}]/.test(after)) ? ' ' : '';
+  return before + spB + token + spA + after;
+}
+// Posisi penyisipan untuk variabel di tengah kalimat: posisi kata yang
+// sama secara relatif (fraksi panjang sumber -> jumlah kata target).
+function insertPosByFraction(text, frac) {
+  const starts = []; const re = /\S+/g; let m;
+  while ((m = re.exec(text)) !== null) starts.push(m.index);
+  if (!starts.length) return text.length;
+  const n = Math.round(frac * starts.length);
+  if (n <= 0) return starts[0];
+  if (n >= starts.length) return text.length;
+  return starts[n];
+}
+function repairMissingVars(source, target) {
+  const s = String(source || ''), t = String(target || '');
+  const none = { text: target, fixed: [], method: 'none' };
+  if (!s || !t.trim()) return none;
+  const det = missingVarOccurrences(s, t);
+  if (!det.missing.length) return none;
+  let text = t;
+  let replaced = 0, inserted = 0;
+  // 1) Nama variabel yang diterjemahkan mesin ({nama} untuk {name}):
+  // token berlebih dengan bentuk yang sama diganti di tempatnya — TAPI
+  // hanya kalau posisinya mirip (selisih posisi relatif <= 0,25). Token
+  // berlebih yang jauh posisinya (mis. awalan '[ID]' dari mock, atau
+  // kata berkurung di kalimat lain) bukan nama variabel yang
+  // diterjemahkan: jangan diganti, biarkan jadi peringatan QA.
+  // Diterapkan dari kanan ke kiri supaya indeks token lain tetap valid.
+  const extraFree = det.extra.map((x) => ({ token: x.token, index: x.index, used: false }));
+  const pairs = [];
+  const stillMissing = [];
+  for (const mo of det.missing) {
+    const fracS = s.length ? mo.index / s.length : 0;
+    let best = -1, bestDiff = Infinity;
+    extraFree.forEach((x, xi) => {
+      if (x.used || shapeOfVar(x.token) !== shapeOfVar(mo.token)) return;
+      const fracT = t.length ? x.index / t.length : 0;
+      const d = Math.abs(fracT - fracS);
+      if (d < bestDiff) { bestDiff = d; best = xi; }
+    });
+    if (best >= 0 && bestDiff <= 0.25) {
+      extraFree[best].used = true;
+      pairs.push({ index: extraFree[best].index, del: extraFree[best].token.length, ins: mo.token });
+    } else stillMissing.push(mo);
+  }
+  pairs.sort((a, b) => b.index - a.index);
+  for (const p of pairs) { text = text.slice(0, p.index) + p.ins + text.slice(p.index + p.del); replaced++; }
+  // 2) Sisipkan sisanya mengikuti posisi relatif di teks asli.
+  if (stillMissing.length) {
+    const edits = [];
+    for (let k = 0; k < stillMissing.length; k++) {
+      const mo = stillMissing[k];
+      const beforeSrc = s.slice(0, mo.index), afterSrc = s.slice(mo.index + mo.token.length);
+      let pos;
+      if (beforeSrc.trim() === '') {
+        pos = /^[\s]*/.exec(text)[0].length; // awal kalimat
+      } else if (/^[\s.,!?;:'"”’)…\]}]*$/.test(afterSrc)) {
+        const m2 = /[.,!?;:'"”’)…\s\]}]*$/.exec(text);
+        pos = text.length - m2[0].length; // akhir, sebelum tanda baca penutup
+      } else {
+        pos = insertPosByFraction(text, mo.index / s.length); // tengah, posisi relatif
+      }
+      edits.push({ pos, token: mo.token, order: k });
+    }
+    // Terapkan dari kanan ke kiri supaya posisi kiri tetap valid; posisi
+    // sama diterapkan urut terbalik supaya urutan akhir sama seperti asli.
+    edits.sort((a, b) => (b.pos - a.pos) || (b.order - a.order));
+    for (const e of edits) { text = insertTokenAt(text, e.pos, e.token); inserted++; }
+  }
+  // Verifikasi: hitung berapa yang benar-benar kembali ada.
+  const after = missingVarOccurrences(s, text);
+  const countOf = (arr, tok) => arr.filter((x) => x === tok).length;
+  const fixed = [];
+  for (const tok of [...new Set(det.missing.map((m) => m.token))]) {
+    if (countOf(det.missing.map((m) => m.token), tok) > countOf(after.missing.map((m) => m.token), tok)) fixed.push(tok);
+  }
+  if (!fixed.length) return none;
+  return { text, fixed, method: replaced && inserted ? 'mixed' : (replaced ? 'replace' : 'insert') };
+}
+// Daftar istilah glosarium untuk cek QA no. 9: gabungan kamus bawaan GT +
+// kamus kustom pengguna. Istilah yang padanannya sama dengan aslinya
+// (mis. 'armor' -> 'Armor') dilewati — tidak bisa dicek.
+function qaGlossaryList() {
+  const out = [];
+  const add = (obj) => {
+    if (!obj) return;
+    for (const [term, expected] of Object.entries(obj)) {
+      if (!term || !expected || expected.toLowerCase() === term.toLowerCase()) continue;
+      out.push({ term, expected, re: new RegExp('\\b' + escapeRegExp(term) + '\\b', 'i') });
+    }
+  };
+  if (typeof GT !== 'undefined' && GT.glossary) add(GT.glossary);
+  if (typeof customGlossary !== 'undefined') add(customGlossary);
+  return out;
+}
+// Ringkasan QA untuk satu file: pasangan (sumber, terjemahan dari cache).
+// Terjemahan diambil dari cache — sama dengan yang diterapkan Timpa.
+function qaSummaryForFile(fileRec, src, tgt, glossaryList) {
+  const rows = (fileRec.stringRows && fileRec.stringRows.length ? fileRec.stringRows : (fileRec.strings || []).map((t) => ({ text: t, scope: null })));
+  const byCode = {}; let translated = 0, untranslated = 0, errors = 0, warnings = 0;
+  const samples = [];
+  for (const row of rows) {
+    const tr = GT.cacheLookup(src, tgt, row.scope, row.text);
+    const issues = qaCheck(row.text, tr || '', { glossary: glossaryList });
+    if (tr) translated++; else untranslated++;
+    let hasErr = false, hasWarn = false;
+    for (const is of issues) {
+      byCode[is.code] = (byCode[is.code] || 0) + 1;
+      if (is.severity === 'error') hasErr = true; else hasWarn = true;
+    }
+    if (hasErr) errors++;
+    if (hasWarn) warnings++;
+    if (issues.length && samples.length < 200) samples.push({ source: row.text, target: tr || '', scope: row.scope, issues });
+  }
+  return { path: fileRec.path, total: rows.length, translated, untranslated, errors, warnings, byCode, samples };
+}
+// Pecah kunci cache 's|t|scope|teks' / 's|t|teks' (duplikat kecil dari
+// parseCacheEntry di dalam GT — dipakai top-level untuk ekspor TMX).
+function splitCacheKey(key) {
+  const parts = String(key).split('|');
+  if (parts.length < 3) return null;
+  if (parts.length >= 4) return { s: parts[0], t: parts[1], scope: parts[2], text: parts.slice(3).join('|') };
+  return { s: parts[0], t: parts[1], scope: null, text: parts.slice(2).join('|') };
+}
+// Kumpulkan pasangan final untuk TMX: dari cache + edit manual Daftar Teks
+// yang belum di-Timpa. Segmen dengan error QA dilewati (supaya TM tidak
+// berisi sampah, mis. halusinasi Groq di Wasteland); segmen kosong / sama
+// dengan sumber juga dilewati. Saran fuzzy tidak pernah masuk — tidak dicache.
+function collectTmxPairs(src, tgt, glossaryList) {
+  const pairs = []; let skippedErrors = 0, skippedSame = 0;
+  const seen = new Set();
+  const addPair = (source, target, scope) => {
+    if (!source || !target || !target.trim() || target.trim() === source.trim()) { skippedSame++; return; }
+    const k = source + '\n' + target;
+    if (seen.has(k)) return;
+    const issues = qaCheck(source, target, { glossary: glossaryList });
+    if (issues.some((i) => i.severity === 'error')) { skippedErrors++; return; }
+    seen.add(k);
+    pairs.push({ source, target, scope, warnings: issues.filter((i) => i.severity === 'warning').map((i) => i.code) });
+  };
+  for (const [k, v] of GT.cache.entries()) {
+    const e = splitCacheKey(k);
+    if (!e || e.s !== src || e.t !== tgt) continue;
+    addPair(e.text, v, e.scope);
+  }
+  if (typeof textListRows !== 'undefined' && textListRows && textListRows.length) {
+    textListRows.forEach((row, i) => {
+      const t = (typeof textListGet === 'function' ? textListGet(i) : (textListEdits[i] || '')).trim();
+      if (t) addPair(row.text, t, row.scope);
+    });
+  }
+  return { pairs, skippedErrors, skippedSame };
+}
+// Bangun file TMX 1.4 (Translation Memory eXchange) — standar yang dibaca
+// OmegaT, Trados, memoQ. <prop x-context> membedakan source sama dengan
+// target berbeda (per-passage, FASE 36); <note> mencatat warning QA.
+function tmxBuild(src, tgt, pairs) {
+  const seen = new Set(); const tus = [];
+  for (const p of pairs) {
+    const k = p.source + '\n' + p.target;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const ctx = p.scope ? '<prop type="x-context">' + xmlEscape(p.scope) + '</prop>' : '';
+    const notes = (p.warnings || []).map((w) => '<note>' + xmlEscape('QA warning: ' + (QA_CODE_LABELS[w] || w)) + '</note>').join('');
+    tus.push('<tu>' + ctx + notes + '<tuv xml:lang="' + xmlEscape(src) + '"><seg>' + xmlEscape(p.source) + '</seg></tuv>'
+      + '<tuv xml:lang="' + xmlEscape(tgt) + '"><seg>' + xmlEscape(p.target) + '</seg></tuv></tu>');
+  }
+  const header = '<?xml version="1.0" encoding="UTF-8"?>\n<tmx version="1.4">\n<header creationtool="Game Translate" creationtoolversion="FASE 38" datatype="plaintext" segtype="sentence" adminlang="en" srclang="' + xmlEscape(src) + '" o-tmf="Game Translate" />\n<body>\n';
+  return { content: header + tus.join('\n') + '\n</body>\n</tmx>\n', tuCount: tus.length };
+}
+// Laporan QA (.md) — ringkasan per file + per kode + pasangan bermasalah.
+function buildQaReportMd(qaData) {
+  const lines = ['# Laporan QA — Game Translate (FASE 38)', '', 'Bahasa: ' + qaData.src + ' → ' + qaData.tgt, 'Total pasangan: ' + qaData.totalPairs + ' | Error: ' + qaData.totalErrors + ' | Warning: ' + qaData.totalWarnings, ''];
+  lines.push('## Per file', '', '| File | Pasangan | Terisi | Belum | Error | Warning | Masalah terbanyak |', '|---|---|---|---|---|---|---|');
+  for (const f of qaData.files) {
+    const top = Object.entries(f.byCode).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c, n]) => (QA_CODE_LABELS[c] || c) + ' (' + n + ')').join(', ') || '—';
+    lines.push('| ' + f.path + ' | ' + f.total + ' | ' + f.translated + ' | ' + f.untranslated + ' | ' + f.errors + ' | ' + f.warnings + ' | ' + top + ' |');
+  }
+  const allCodes = {};
+  for (const f of qaData.files) for (const [c, n] of Object.entries(f.byCode)) allCodes[c] = (allCodes[c] || 0) + n;
+  lines.push('', '## Per jenis masalah', '');
+  for (const [c, n] of Object.entries(allCodes).sort((a, b) => b[1] - a[1])) lines.push('- ' + (QA_CODE_LABELS[c] || c) + ': ' + n);
+  if (!Object.keys(allCodes).length) lines.push('- Tidak ada masalah QA.');
+  const flagged = [];
+  for (const f of qaData.files) for (const s of f.samples) flagged.push({ file: f.path, ...s });
+  lines.push('', '## Pasangan bermasalah' + (flagged.length >= 200 ? ' (200 pertama)' : ''), '');
+  if (!flagged.length) lines.push('Tidak ada pasangan bermasalah.');
+  for (const s of flagged.slice(0, 200)) {
+    lines.push('- **[' + s.file + ']** "' + s.source.replace(/\n/g, ' ') + '" → "' + (s.target || '(kosong)').replace(/\n/g, ' ') + '"');
+    for (const is of s.issues) lines.push('  - ' + (is.severity === 'error' ? '❌' : '⚠️') + ' ' + (QA_CODE_LABELS[is.code] || is.code) + ': ' + is.detail);
+  }
+  lines.push('', '_QA bersifat peringatan (advisory) — tidak memblokir Timpa/Download._');
+  return lines.join('\n') + '\n';
+}
 function checkTranslated(fileRec) {
   const orig = fileRec.content || '';
   const tr = fileRec.translatedContent || '';
@@ -2626,6 +3163,30 @@ async function repairFile(fileRec, src, tgt) {
     fileRec.translatedContent = out.content;
     fileRec.failedTexts = out.failedTexts;
   }
+  // 2) FASE 39: perbaiki variabel yang hilang di terjemahan file ini.
+  // Teks yang diterjemah tapi kehilangan variabel selama ini HANYA
+  // diperingatkan (FASE 7) — di sini diperbaiki otomatis dari teks
+  // aslinya (repairMissingVars), ditulis kembali ke cache, lalu file
+  // dibangun ulang dari cache (cacheOnly: tanpa jaringan). Kalau cek
+  // kemudian lolos, file dipertahankan (tidak dikembalikan ke asli).
+  let varFixed = 0;
+  const rows39 = (fileRec.stringRows && fileRec.stringRows.length ? fileRec.stringRows : (fileRec.strings || []).map((t) => ({ text: t, scope: null })));
+  for (const row of rows39) {
+    const cached = GT.cacheLookup(src, tgt, row.scope, row.text);
+    if (!cached || cached === row.text) continue;
+    const rep39 = repairMissingVars(row.text, cached);
+    if (rep39.fixed.length) {
+      GT.cache.set(GT.cacheKeyScoped(src, tgt, row.scope, row.text), rep39.text);
+      varFixed++;
+    }
+  }
+  if (varFixed) {
+    GT.saveCache();
+    const out39 = await translateFileContent({ ...fileRec, content: fileRec.content }, src, tgt, { cacheOnly: true });
+    fileRec.translatedContent = out39.content;
+    fileRec.failedTexts = out39.failedTexts;
+    fixed.push('🛡 ' + varFixed + ' teks diperbaiki variabelnya saat Perbaiki.');
+  }
   // 3) Kalau cek hasil masih gagal, kembalikan file ke aslinya.
   const chk = checkTranslated(fileRec);
   if (!chk.ok) {
@@ -2648,12 +3209,14 @@ const btnDownloadTl = $('btnDownloadTl');
 const btnDownloadPoRenpy = $('btnDownloadPoRenpy');
 const btnDownloadPo = $('btnDownloadPo');
 const btnCheckResult = $('btnCheckResult'), btnRepair = $('btnRepair'), btnReport = $('btnReport');
+const btnDownloadTmx = $('btnDownloadTmx'), btnDownloadQa = $('btnDownloadQa');
 const barWrap = $('barWrap'), bar = $('bar'), statusEl = $('status'), logEl = $('log');
 const statsEl = $('stats'), stats2El = $('stats2'), tbody = $('tbody'), recoEl = $('reco'), checkOutEl = $('checkOut');
 let allFiles = []; // {path,name,ext,kind,content,binary,blob,size,count,chars,lang,samples,isLangFile,status,note,checked,translatedContent,failedTexts,checkResult}
 let lastZipName = 'game';
 let cancelFlag = { value: false };
 let lastSrc = 'en', lastTgt = 'id';
+let lastQaData = null; // FASE 38: hasil QA terakhir (untuk Download Laporan QA)
 function log(msg) {
   const now = new Date();
   const pad = (n) => String(n).padStart(2, '0');
@@ -2947,7 +3510,7 @@ async function runTranslation(targets) {
   window.gtMissingVarsReport = []; // Reset laporan variabel hilang (Fase 7) supaya laporan lama dari Timpa File Asli / retry tidak ikut terbawa
   cancelFlag = { value: false };
   btnTranslateSel.disabled = true; btnTranslateAll.disabled = true; btnCancel.disabled = false;
-  btnDownload.disabled = true; btnRetry.disabled = true; btnCheckResult.disabled = true; btnRepair.disabled = true; btnReport.disabled = true;
+  btnDownload.disabled = true; btnRetry.disabled = true; btnCheckResult.disabled = true; btnRepair.disabled = true; btnReport.disabled = true; btnDownloadTmx.disabled = true; btnDownloadQa.disabled = true;
   logEl.textContent = '';
   setBar(0);
   const t0 = Date.now();
@@ -3003,10 +3566,16 @@ async function runTranslation(targets) {
       });
       statusEl.innerHTML += '<br><span style="color:#f59e0b;font-size:13px">⚠️ Ada teks yang kehilangan variabel! Cek Log di atas.</span>';
     }
+    // FASE 39: laporkan yang berhasil diperbaiki otomatis saat ditempel.
+    if (window.gtVarsAutoFixed) {
+      log('🛡 ' + window.gtVarsAutoFixed + ' teks diperbaiki variabelnya saat ditempel (FASE 39).');
+      window.gtVarsAutoFixed = 0;
+    }
     window.gtMissingVarsReport = []; // Reset untuk proses berikutnya
     log('Selesai: ' + totalApplied + ' diterapkan, ' + totalCached + ' dari cache, ' + totalFailed + ' gagal.');
     $('translateCard').style.display = 'block';
     btnDownload.disabled = false;
+    btnDownloadTmx.disabled = false; // FASE 38: TMX dari cache terjemahan
     btnDownloadTl.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 21: tl/ hanya untuk game Ren'Py
     btnDownloadPoRenpy.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 27
     btnDownloadPo.disabled = !allFiles.some((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content); // FASE 24
@@ -3051,6 +3620,9 @@ let textListFile = null, textListRows = [];
 // Terjemahkan/Terapkan/Download/Upload tetap bekerja untuk semua halaman.
 const TEXT_LIST_PAGE_SIZE = 200;
 let textListPage = 0, textListEdits = {};
+// FASE 38: saran fuzzy per baris {score, from} — saran, BUKAN terjemahan
+// final. Dihapus begitu pengguna mengedit baris itu (edit = ditinjau).
+let textListFuzzy = {};
 let textListFilteredIndices = []; // Menyimpan index asli yang lolos filter pencarian
 function textListPageCount() { return Math.max(1, Math.ceil(textListFilteredIndices.length / TEXT_LIST_PAGE_SIZE)); }
 function textListSavePage() {
@@ -3079,6 +3651,19 @@ function renderTextList() {
   const query = ($('textListSearch') ? $('textListSearch').value : '').toLowerCase().trim();
   const statusFilter = ($('textListFilter') ? $('textListFilter').value : 'all');
   textListFilteredIndices = [];
+  // FASE 38: glosarium + hasil QA dihitung sekali per render (bukan per
+  // baris) supaya daftar besar tidak lambat; getRowQa memakai memo.
+  const qaGloss = qaGlossaryList();
+  const qaMemo = {};
+  const getRowQa = (i) => {
+    if (qaMemo[i]) return qaMemo[i];
+    const row = textListRows[i];
+    const t = textListEdits[i] || '';
+    const fz = textListFuzzy[i];
+    const issues = qaCheck(row.text, t, { glossary: qaGloss, fuzzyScore: fz ? fz.score : null });
+    qaMemo[i] = issues;
+    return issues;
+  };
 
   for (let i = 0; i < textListRows.length; i++) {
     const row = textListRows[i];
@@ -3103,6 +3688,10 @@ function renderTextList() {
       matchStatus = !!transText.trim();
     } else if (statusFilter === 'failed') {
       matchStatus = !!transText.trim() && getMissingVars(row.text, transText).length > 0;
+    } else if (statusFilter === 'qa') {
+      // FASE 38: hanya baris dengan masalah QA (termasuk saran fuzzy
+      // di bawah 95% yang perlu ditinjau).
+      matchStatus = getRowQa(i).length > 0;
     }
 
     if (matchStatus) textListFilteredIndices.push(i);
@@ -3138,9 +3727,20 @@ function renderTextList() {
       }
       ctxHtml = '<div style="color:#64748b; font-size:11px; margin-top:4px">' + esc(ctxLbl + snippet) + '</div>';
     }
+    // FASE 38: badge saran fuzzy + badge QA di bawah kolom terjemahan.
+    // Fuzzy: saran dari cache mirip — perlu ditinjau, bukan final.
+    // QA: masalah per teks (variabel/tag/angka/glosarium/dll.).
+    let badgeHtml = '';
+    const fz = textListFuzzy[i];
+    if (fz) badgeHtml += '<div style="color:#b45309; font-size:11px; margin-top:4px">≈' + fz.score + '% fuzzy — saran, perlu ditinjau (dari: "' + esc(fz.from.slice(0, 40)) + '")</div>';
+    const qaIssues = getRowQa(i);
+    if (qaIssues.length) {
+      const qaTitle = qaIssues.map((x) => (QA_CODE_LABELS[x.code] || x.code) + ': ' + x.detail).join('; ').replace(/"/g, '&quot;');
+      badgeHtml += '<div style="color:#dc2626; font-size:11px; margin-top:4px" title="' + qaTitle + '">⚠ QA: ' + qaIssues.map((x) => QA_CODE_LABELS[x.code] || x.code).join(', ') + '</div>';
+    }
     html += '<tr style="border-top:1px solid #e2e8f0"><td style="text-align:right; padding:6px; color:#64748b; vertical-align:top">' + (i + 1) + '</td>'
       + '<td style="padding:6px; vertical-align:top; white-space:pre-wrap; word-break:break-word">' + esc(s) + ctxHtml + '</td>'
-      + '<td style="padding:6px; vertical-align:top"><textarea class="tl-input" data-idx="' + i + '" rows="2" style="width:100%; box-sizing:border-box; font:inherit; resize:vertical; ' + borderStyle + '" placeholder="— belum diterjemahkan —" ' + titleAttr + '>' + esc(transText) + '</textarea></td></tr>';
+      + '<td style="padding:6px; vertical-align:top"><textarea class="tl-input" data-idx="' + i + '" rows="2" style="width:100%; box-sizing:border-box; font:inherit; resize:vertical; ' + borderStyle + '" placeholder="— belum diterjemahkan —" ' + titleAttr + '>' + esc(transText) + '</textarea>' + badgeHtml + '</td></tr>';
   }
   html += '</tbody></table>';
   wrap.innerHTML = html;
@@ -3156,6 +3756,8 @@ function renderTextList() {
 
   if (query) {
     $('textListStatus').textContent = 'Ditemukan ' + textListFilteredIndices.length + ' teks yang cocok dengan "' + query + '".';
+  } else if (statusFilter === 'qa') {
+    $('textListStatus').textContent = textListFilteredIndices.length + ' baris bermasalah QA dari ' + textListRows.length + ' teks. Perbaiki yang ditandai, lalu klik "Timpa File Asli".';
   } else {
     $('textListStatus').textContent = textListRows.length + ' teks di ' + (textListFile ? textListFile.path : '') + '. Klik "Terjemahkan Daftar" untuk mengisi kolom terjemahan.';
   }
@@ -3178,7 +3780,7 @@ $('btnShowList').addEventListener('click', () => {
     ? textListFile.stringRows
     : (textListFile.strings || []).map((t) => ({ text: t, scope: null, prev: null, next: null, line: null }))
   ).slice();
-  textListPage = 0; textListEdits = {};
+  textListPage = 0; textListEdits = {}; textListFuzzy = {}; // FASE 38: reset penanda fuzzy saat ganti file
   if ($('textListSearch')) { $('textListSearch').value = ''; $('textListSearch').disabled = false; } // Reset & aktifkan pencarian
   if ($('textListFilter')) { $('textListFilter').value = 'all'; $('textListFilter').disabled = false; }
   if ($('btnListCopyAll')) { $('btnListCopyAll').disabled = false; }
@@ -3202,9 +3804,18 @@ $('btnListCopyAll').addEventListener('click', () => {
     textListRows.forEach((row, i) => {
       textListEdits[i] = row.text;
     });
+    textListFuzzy = {}; // FASE 38: salinan asli bukan saran fuzzy
     renderTextList();
     $('textListStatus').textContent = 'Semua ' + textListRows.length + ' teks asli telah disalin ke kolom terjemahan. Silakan edit kata-kata yang perlu diubah.';
   }
+});
+// FASE 38: edit manual = ditinjau — hapus penanda fuzzy baris itu (delegasi,
+// textarea dibuat ulang tiap render jadi listener menempel di wadahnya).
+$('textListWrap').addEventListener('input', (e) => {
+  const el = e.target && e.target.closest ? e.target.closest('.tl-input') : null;
+  if (!el) return;
+  const i = parseInt(el.getAttribute('data-idx'), 10);
+  if (!isNaN(i) && textListFuzzy[i]) delete textListFuzzy[i];
 });
 // FASE 20: tombol Batal untuk Daftar Teks — terjemahan bisa di-stop dan
 // dilanjutkan nanti. Yang sudah selesai tersimpan otomatis di cache
@@ -3230,8 +3841,12 @@ $('btnTranslateList').addEventListener('click', async () => {
   try {
     // FASE 36: tiap baris diterjemahkan dengan scope-nya (passage/file),
     // supaya teks yang sama di dua passage tidak saling menimpa hasilnya.
+    // FASE 38: fuzzy: true — teks tanpa cache persis dicarikan saran dari
+    // cache yang mirip (>= 80%); saran berstatus 'fuzzy' + skor, tidak
+    // dicache, dan harus ditinjau (badge ≈% di barisnya).
     const res = await GT.translateTexts(textListRows.map((r) => r.text), src, tgt, {
       scopes: textListRows.map((r) => r.scope),
+      fuzzy: true,
       // FASE 17: progress live — tampilkan berapa teks yang sudah selesai
       // dari total, plus mesin yang sedang dipakai (cache/kamus/Google/dll).
       onProgress: (done, total, engine) => {
@@ -3241,17 +3856,23 @@ $('btnTranslateList').addEventListener('click', async () => {
       onStatus: (s) => { if (s === 'downloading') $('textListStatus').textContent = 'Mengunduh model terjemahan Chrome… (sekali saja, selanjutnya offline)'; },
       cancelled: textListCancelFlag // FASE 20: bisa di-stop
     });
-    let filled = 0, failed = 0;
+    let filled = 0, failed = 0, fuzzyCount = 0;
     textListRows.forEach((row, i) => {
       const r = res.get(unitKey(row.scope, row.text));
-      if (r && !r.failed && r.translated && r.translated !== row.text) { textListEdits[i] = r.translated; filled++; }
+      if (r && !r.failed && r.translated && r.translated !== row.text) {
+        textListEdits[i] = r.translated; filled++;
+        // FASE 38: saran fuzzy ditandai (skor + sumbernya); hasil mesin
+        // menghapus penanda lama (baris itu kini terjemahan final).
+        if (r.fromFuzzy) { textListFuzzy[i] = { score: r.fuzzyScore, from: r.fuzzySource }; fuzzyCount++; }
+        else delete textListFuzzy[i];
+      }
       else if (r && r.failed) { failed++; }
     });
     renderTextList(); // tampilkan hasil di halaman saat ini (edit tersimpan di semua halaman)
     if (textListCancelFlag.value) {
-      $('textListStatus').textContent = 'Dibatalkan — ' + filled + ' terisi. Yang sudah selesai tersimpan, klik "Terjemahkan Daftar" lagi untuk melanjutkan sisanya.';
+      $('textListStatus').textContent = 'Dibatalkan — ' + filled + ' terisi' + (fuzzyCount ? ' (' + fuzzyCount + ' saran fuzzy, perlu ditinjau)' : '') + '. Yang sudah selesai tersimpan, klik "Terjemahkan Daftar" lagi untuk melanjutkan sisanya.';
     } else {
-      $('textListStatus').textContent = 'Selesai: ' + filled + ' terisi, ' + failed + ' gagal. Edit yang kurang pas, lalu klik "Timpa File Asli".';
+      $('textListStatus').textContent = 'Selesai: ' + filled + ' terisi' + (fuzzyCount ? ' (' + fuzzyCount + ' saran fuzzy ≈, perlu ditinjau — saring lewat filter "Bermasalah QA")' : '') + ', ' + failed + ' gagal. Edit yang kurang pas, lalu klik "Timpa File Asli".';
     }
     // FASE 28: daftar besar melebihi cache browser — ingatkan soal Simpan Proyek.
     if (textListRows.length > GT.cacheCap || window.gtCacheFull) {
@@ -3273,12 +3894,21 @@ $('btnApplyList').addEventListener('click', async () => {
   if (!textListRows.length) return;
   if (!textListFile) { $('textListStatus').textContent = 'Pilih file dulu.'; return; }
   textListSavePage(); // simpan edit di halaman yang sedang tampil
-  let applied = 0;
+  let applied = 0, varFixedList = 0;
   // FASE 36: terjemahan ditulis ke cache dengan kunci scope-nya, supaya
   // Timpa menerapkan terjemahan yang benar ke passage yang benar.
+  // FASE 39: perbaiki variabel yang hilang SEBELUM ditulis ke cache,
+  // supaya Timpa menerapkan versi yang sudah benar (dan badge ⚠ QA di
+  // daftar ikut hilang saat render ulang).
   textListRows.forEach((row, i) => {
     const t = textListGet(i);
-    if (t && t !== row.text) { GT.cache.set(GT.cacheKeyScoped(srcLang.value, tgtLang.value, row.scope, row.text), t); applied++; }
+    if (t && t !== row.text) {
+      const rep39 = repairMissingVars(row.text, t);
+      const finalT = rep39.fixed.length ? rep39.text : t;
+      if (rep39.fixed.length) { varFixedList++; textListEdits[i] = finalT; }
+      GT.cache.set(GT.cacheKeyScoped(srcLang.value, tgtLang.value, row.scope, row.text), finalT);
+      applied++;
+    }
   });
   if (applied) GT.saveCache();
   const src = srcLang.value, tgt = tgtLang.value;
@@ -3296,13 +3926,21 @@ $('btnApplyList').addEventListener('click', async () => {
     textListFile.checkResult = null;
     setBar(100);
     btnDownload.disabled = false;
+    btnDownloadTmx.disabled = false; // FASE 38: TMX dari cache terjemahan
     btnDownloadTl.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 21
     btnDownloadPoRenpy.disabled = !allFiles.some((f) => f.ext === 'rpy'); // FASE 27
     btnDownloadPo.disabled = !allFiles.some((f) => ['gd', 'tscn', 'tres'].includes(f.ext) && f.content); // FASE 24
     btnCheckResult.disabled = false; btnRepair.disabled = false; btnReport.disabled = false;
     log('Timpa File Asli: ' + textListFile.path + ' — ' + out.applied + ' diterapkan, ' + out.failed + ' belum ada di daftar.');
+    if (varFixedList) log('🛡 ' + varFixedList + ' teks diperbaiki variabelnya saat Timpa.');
+    if (window.gtVarsAutoFixed) { log('🛡 ' + window.gtVarsAutoFixed + ' teks diperbaiki variabelnya saat ditempel.'); window.gtVarsAutoFixed = 0; }
+    // FASE 39: render ulang DULU supaya badge ⚠ QA baris yang diperbaiki
+    // hilang — renderTextList menimpa status, jadi status Timpa ditulis
+    // sesudahnya supaya tidak tertimpa.
+    if (varFixedList) renderTextList();
     $('textListStatus').textContent = 'Selesai: ' + out.applied + ' terjemahan diterapkan ke file ' + textListFile.path + '.'
       + (out.failed ? ' ' + out.failed + ' teks belum ada di daftar (tetap Inggris) — klik "Terjemahkan Semua" untuk sisanya.' : '')
+      + (varFixedList ? ' 🛡 ' + varFixedList + ' teks diperbaiki variabelnya.' : '')
       + ' Klik "Download ZIP terjemahan" untuk mengunduh.';
   } catch (e) {
     $('textListStatus').textContent = 'Gagal menerapkan ke file: ' + (e && e.message ? e.message : e);
@@ -3433,10 +4071,29 @@ btnCheckResult.addEventListener('click', () => {
     html += '<tr><td class="file">' + esc(f.path) + '</td><td>' + (chk.ok ? '<span class="badge badge-ok">OK</span>' : '<span class="badge badge-fail">Gagal</span>') + '</td><td>' + (chk.issues.length ? esc(chk.issues.join('; ')) : '—') + '</td></tr>';
   }
   html += '</tbody></table>';
+  // FASE 38: QA per teks (ala locqa) — pasangan (sumber, terjemahan dari
+  // cache) diperiksa variabel/tag/angka/tanda baca/spasi/glosarium/rasio.
+  // QA hanya peringatan (advisory): tidak mengubah hasil cek file di atas.
+  const qaGloss = qaGlossaryList();
+  const qaFiles = [];
+  let qaTotal = 0, qaErr = 0, qaWarn = 0;
+  for (const f of done) {
+    const q = qaSummaryForFile(f, lastSrc, lastTgt, qaGloss);
+    qaFiles.push(q); qaTotal += q.total; qaErr += q.errors; qaWarn += q.warnings;
+  }
+  lastQaData = { src: lastSrc, tgt: lastTgt, files: qaFiles, totalPairs: qaTotal, totalErrors: qaErr, totalWarnings: qaWarn };
+  html += '<h3 style="margin-top:14px">QA per teks (FASE 38)</h3>';
+  html += '<table><thead><tr><th>File</th><th>Pasangan</th><th>Terisi</th><th>Belum</th><th>Error</th><th>Warning</th><th>Masalah terbanyak</th></tr></thead><tbody>';
+  for (const q of qaFiles) {
+    const top = Object.entries(q.byCode).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c, n]) => (QA_CODE_LABELS[c] || c) + ' (' + n + ')').join(', ') || '—';
+    html += '<tr><td class="file">' + esc(q.path) + '</td><td>' + q.total + '</td><td>' + q.translated + '</td><td>' + q.untranslated + '</td><td>' + q.errors + '</td><td>' + q.warnings + '</td><td>' + esc(top) + '</td></tr>';
+  }
+  html += '</tbody></table>';
   checkOutEl.innerHTML = html;
+  btnDownloadQa.disabled = false;
   const bad = done.filter((f) => f.checkResult && !f.checkResult.ok).length;
-  statusEl.textContent = bad ? bad + ' file bermasalah — klik "Perbaiki".' : 'Semua file lolos cek: macro, link, tag, dan nama passage utuh.';
-  log('Cek hasil: ' + (done.length - bad) + '/' + done.length + ' file OK.');
+  statusEl.textContent = (bad ? bad + ' file bermasalah — klik "Perbaiki". ' : 'Semua file lolos cek: macro, link, tag, dan nama passage utuh. ') + 'QA per teks: ' + qaTotal + ' pasangan, ' + qaErr + ' error, ' + qaWarn + ' warning.';
+  log('Cek hasil: ' + (done.length - bad) + '/' + done.length + ' file OK. QA: ' + qaErr + ' error, ' + qaWarn + ' warning dari ' + qaTotal + ' pasangan.');
 });
 btnRepair.addEventListener('click', async () => {
   const done = allFiles.filter((f) => f.translatedContent !== null);
@@ -3445,8 +4102,10 @@ btnRepair.addEventListener('click', async () => {
   statusEl.textContent = 'Memperbaiki…';
   const reports = [];
   for (const f of done) {
-    const chk = checkTranslated(f);
-    if (chk.ok && !(f.failedTexts && f.failedTexts.length)) continue;
+    // FASE 39: Perbaiki dijalankan untuk semua file yang sudah
+    // diterjemahkan (bukan hanya yang gagal cek) — perbaikan variabel
+    // harus jalan walau cek strukturalnya lolos. repairFile sendiri
+    // tidak mengubah apa-apa kalau tidak ada yang perlu diperbaiki.
     const r = await repairFile(f, lastSrc, lastTgt);
     if (r.fixed.length) reports.push(f.path + ': ' + r.fixed.join(' '));
     log('Perbaiki ' + f.path + ': ' + (r.fixed.join(' ') || 'tidak ada yang perlu diperbaiki.'));
@@ -3560,6 +4219,39 @@ btnDownloadPo.addEventListener('click', () => {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
   statusEl.textContent = 'File ' + tgt + '.po di-download (' + built.stringCount + ' teks dari ' + built.fileCount + ' file source Godot). Isi msgstr-nya kosong — terjemahkan file ini (upload lagi ke web app, atau pakai Poedit), lalu daftarkan di Godot: Project Settings > Localization > Translations.';
   log('Buat .po Godot: ' + built.stringCount + ' teks dari ' + built.fileCount + ' file -> ' + tgt + '.po');
+});
+/* FASE 38 — Download Laporan QA (.md). Memakai lastQaData dari "Cek Hasil"
+   (ringkasan per file + per kode + pasangan bermasalah). */
+btnDownloadQa.addEventListener('click', () => {
+  if (!lastQaData) { statusEl.textContent = 'Jalankan "Cek Hasil" dulu untuk membuat laporan QA.'; return; }
+  const md = buildQaReportMd(lastQaData);
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'qa-laporan.md';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
+  statusEl.textContent = 'Laporan QA di-download sebagai qa-laporan.md (' + lastQaData.totalErrors + ' error, ' + lastQaData.totalWarnings + ' warning dari ' + lastQaData.totalPairs + ' pasangan).';
+});
+/* FASE 38 — Download TMX (Translation Memory eXchange 1.4). Memori
+   terjemahan dari cache (+ edit Daftar Teks yang belum di-Timpa), HANYA
+   segmen yang lolos QA (0 error — warning masih boleh, dicatat di <note>).
+   Saran fuzzy tidak pernah masuk (tidak dicache). Nama file <tgt>.tmx,
+   konsisten dengan <tgt>.po Godot. Bisa dibuka di OmegaT, Trados, memoQ. */
+btnDownloadTmx.addEventListener('click', () => {
+  const src = srcLang.value, tgt = tgtLang.value;
+  const qaGloss = qaGlossaryList();
+  const { pairs, skippedErrors, skippedSame } = collectTmxPairs(src, tgt, qaGloss);
+  if (!pairs.length) { statusEl.textContent = 'Tidak ada segmen bersih QA untuk diekspor ke TMX (cache kosong / semua kena error QA). Terjemahkan dulu, lalu coba lagi.'; return; }
+  const built = tmxBuild(src, tgt, pairs);
+  const blob = new Blob([built.content], { type: 'application/xml;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = tgt + '.tmx';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
+  statusEl.textContent = 'TMX di-download sebagai ' + a.download + ' (' + built.tuCount + ' unit; ' + skippedErrors + ' segmen dilewati karena error QA, ' + skippedSame + ' dilewati karena kosong/sama dengan sumber). Bisa dibuka di OmegaT, Trados, atau memoQ — dan dipakai lagi saat game update.';
+  log('Export TMX: ' + built.tuCount + ' tu, ' + skippedErrors + ' error-QA dilewati, ' + skippedSame + ' kosong/sama dilewati.');
 });
 btnReport.addEventListener('click', () => {
   const lines = ['LAPORAN BAHASA GAME — Game Translate Gabungan'];
@@ -4643,7 +5335,9 @@ window.GTGabungan = {
   extractFromHTML, extractFromHTMLData, extractFromJSON, extractFromRpy, extractFromPo, extractFromCsv, extractFromXml,
   extractQuotedRanges, isCodeContextString, escapeForQuote, protectSegments, translateSegment, getMissingVars, decodeHTMLEntities, encodeHTMLEntities,
   splitMacroToken, macroQuoteTranslatable, isDangerousMacro, codeContainerEnd,
+  repairMissingVars, missingVarOccurrences,
   unitKey, twScope, fileScope, rowContextLabel, dedupeRows, rowsFromStrings, parseTextList,
+  levenshtein, similarity, qaCheck, qaGlossaryList, qaSummaryForFile, splitCacheKey, collectTmxPairs, tmxBuild, buildQaReportMd, QA_CODE_LABELS,
   translateFileContent, checkTranslated, repairFile, compiledHint, kindLabel,
   renpyMd5, renpyLexerDecode, renpyPyDecode, renpyEncodeSayString, renpyStringQuote,
   renpyEscapeBadPercent, renpySayGetCode, renpyBlockDigest, renpyComputeIdentifier,
