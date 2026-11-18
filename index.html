@@ -2573,7 +2573,6 @@ function checkTranslated(fileRec) {
       return names.sort().join('|');
     };
     if (namesOf(orig) !== namesOf(tr)) issues.push('Nama passage berubah');
-    const scriptOf = (s) => { const a = []; const re = /<script[\s\S]*?<\/script>/gi; let m; while ((m = re.exec(s))) a.push(m[0]); return a.join(''); };
     const styleOf = (s) => { const a = []; const re = /<style[\s\S]*?<\/style>/gi; let m; while ((m = re.exec(s))) { if (/id=["']gt-overflow-fix["']/.test(m[0])) continue; a.push(m[0]); } return a.join(''); };
     // String di dalam <script> inline memang diterjemahkan (lihat translateFileContent),
     // jadi yang dicek adalah jumlah tag script-nya, bukan isi yang harus utuh.
@@ -3929,7 +3928,6 @@ const _REN_CHAR_DEF_RE = /^\s*(?:define|default)\s+(\w+)\s*=\s*\w*Character\w*\s
 const _REN_CHAR_KWARG_RE = /(status_text|profile|dominant_role)\s*=\s*"((?:[^"\\]|\\.)*)"/g;
 const _REN_SHOW_TEXT_RE = /^\s*show\s+text\s+(?:_\s*\(\s*)?"((?:[^"\\]|\\.)*)"(?:\s*\))?/;
 const _REN_USCORE_RE = /_\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)/g;
-const _REN_RESET_FLOW_RE = /^\s*(return|jump|call|scene|show|hide|play|stop|queue|pause|with|if|elif|else|while|for|pass|define|default|image|transform|label|menu|python|init|screen|style|translate|window|voice|from|import|nvl|del|raise|assert|global)\b/;
 const _REN_KEYWORDS = new Set(('return jump call scene show hide play stop queue pause with if elif else while for pass define default image transform label menu python init screen style translate window voice from import nvl del raise assert global text textbutton background font color style_prefix hover idle selected insensitive active selected_hover selected_idle selected_insensitive outlines thumb scrollbar borders tile focus margin padding align anchor pos xpos ypos xanchor yanchor xalign yalign spacing properties size xsize ysize minimum maximum xminimum yminimum xmaximum ymaximum area alt key action clicked').split(' '));
 const _REN_ASSET_EXT = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.ttf', '.otf', '.woff', '.woff2', '.ogg', '.mp3', '.wav', '.mp4', '.webm', '.rpy', '.rpyc', '.rpa'];
 const _REN_HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
