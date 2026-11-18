@@ -993,6 +993,62 @@ function macroQuoteTranslatable(macroName, qIdx, qCount) {
 // bisa diterjemahkan jadi bagian translatable, sisanya tidak. Bagian-bagian
 // yang digabung kembali membentuk macro persis seperti aslinya (termasuk
 // spasi di dalam tanda kutip, yang disimpan di bagian non-terjemahan).
+// FASE 40: argumen macro <<link>>/<<button>>/<<linkappend>>/
+// <<linkprepend>>/<<linkreplace>> yang berupa markup link [[...]] —
+// terjemahkan LABEL-nya, target tetap utuh. Kasus nyata (Someone Else's
+// Story, passage conversation1):
+//   <<link [['"Are you here all on your own?"'|conversation2]]>>
+// Labelnya hanya 1 argumen kutip DAN tersembunyi di dalam [[...|...]],
+// jadi aturan FASE 35 (butuh >= 2 argumen kutip untuk link/button)
+// melewatkannya. Bentuk label: kutip tunggal berisi kutip ganda
+// ('"..."' — kupas kedua lapis, tapi keduanya dipertahankan di bagian
+// non-terjemahan supaya gaya quoting tetap persis dan tidak kena bug
+// render SugarCube #173), kutip ganda ("..."), atau tanpa kutip.
+// Target sesudah | / -> / <- tidak pernah diterjemahkan (nama passage).
+// Label yang hanya variabel/angka/kode dilewati. Mengembalikan true bila
+// token berhasil dipecah (parts terisi), false bila tidak.
+function splitMacroWikiLink(tok, body, name, parts) {
+  if (['link', 'button', 'linkappend', 'linkprepend', 'linkreplace'].indexOf(name) < 0) return false;
+  const open = body.indexOf('[[');
+  if (open < 0) return false;
+  const close = body.indexOf(']]', open + 2);
+  if (close < 0) return false;
+  const inner = body.slice(open + 2, close);
+  let label, labelStart;
+  const pipe = inner.indexOf('|');
+  const arrow = inner.indexOf('->');
+  const backArrow = inner.indexOf('<-');
+  if (pipe >= 0) { label = inner.slice(0, pipe); labelStart = 0; }
+  else if (arrow >= 0) { label = inner.slice(0, arrow); labelStart = 0; }
+  else if (backArrow >= 0) { label = inner.slice(backArrow + 2); labelStart = backArrow + 2; }
+  else return false; // [[target]] tanpa label — tidak ada yang diterjemahkan
+  const lead = /^[\s]*/.exec(label)[0].length;
+  const trail = /[\s]*$/.exec(label)[0].length;
+  let core = label.slice(lead, label.length - trail);
+  // Kupas lapis kutip luar, lalu lapis kutip dalam bila ada ('"..."'
+  // maupun "'...'") — keduanya dipertahankan di bagian non-terjemahan
+  // lewat koordinat, jadi gaya quoting file asli tidak berubah.
+  let qLead = 0, qTrail = 0;
+  const stripQuotes = () => {
+    if (core.length >= 2 && ((core[0] === "'" && core[core.length - 1] === "'") || (core[0] === '"' && core[core.length - 1] === '"'))) {
+      core = core.slice(1, -1); qLead++; qTrail++; return true;
+    }
+    return false;
+  };
+  stripQuotes();
+  stripQuotes();
+  if (core.length < 2 || !/[A-Za-z]/.test(core)) return false;
+  // Label yang hanya variabel/angka/kode bukan teks tampil.
+  if (/^\$[\w$]*$/.test(core) || /^\d+(\.\d+)?$/.test(core) || core.indexOf('<<') >= 0 || core.indexOf('>>') >= 0) return false;
+  // Koordinat inti dalam tok = koordinat body + 2.
+  const cStart = 2 + (open + 2) + labelStart + lead + qLead;
+  const cEnd = 2 + (open + 2) + labelStart + (label.length - trail) - qTrail;
+  if (cStart >= cEnd) return false;
+  if (cStart > 0) parts.push({ text: tok.slice(0, cStart), translatable: false });
+  parts.push({ text: core, translatable: true, linkLabel: true });
+  if (cEnd < tok.length) parts.push({ text: tok.slice(cEnd), translatable: false });
+  return true;
+}
 function splitMacroToken(tok, parts) {
   const body = tok.slice(2, -2);
   const mName = /^\s*([A-Za-z_][\w-]*)/.exec(body);
@@ -1015,7 +1071,11 @@ function splitMacroToken(tok, parts) {
     if (core.length < 2 || !/[A-Za-z]/.test(core)) return;
     trans.push({ q, lead, trail, core });
   });
-  if (!trans.length) { parts.push({ text: tok, translatable: false }); return; }
+  if (!trans.length) {
+    // FASE 40: label di dalam markup link [[...]] sebagai argumen macro.
+    if (splitMacroWikiLink(tok, body, name, parts)) return;
+    parts.push({ text: tok, translatable: false }); return;
+  }
   // Koordinat dalam tok = koordinat body + 2; isi kutip mulai 1 karakter
   // setelah tanda kutip pembuka.
   let pos = 0;
@@ -1079,7 +1139,7 @@ function twineSegments(text) {
   const parts = [];
   const re = /\[\[.*?\]\]|<<.*?>>|<[^>]+>|@@.*?@@|\/%.*?%\/|\/\*.*?\*\//gs;
   const escRe = /\\[nt]/g;
-  const pushPlain = (s) => {
+  const pushPlain = (s, isLabel) => {
     if (!s) return;
     // Pisahkan spasi di awal/akhir tiap potongan teks biasa jadi segmen
     // non-terjemahan (seperti FASE 10 untuk tepi node): kunci segmen inti
@@ -1095,7 +1155,7 @@ function twineSegments(text) {
       const mT = /\s+$/.exec(t);
       let trail = '';
       if (mT) { trail = mT[0]; t = t.slice(0, t.length - trail.length); }
-      if (t) parts.push({ text: t, translatable: true });
+      if (t) { const pp = { text: t, translatable: true }; if (isLabel) pp.linkLabel = true; parts.push(pp); }
       if (trail) parts.push({ text: trail, translatable: false });
     };
     let eLast = 0, em;
@@ -1123,17 +1183,17 @@ function twineSegments(text) {
         const backArrow = inner.indexOf('<-');
         if (pipe >= 0) {
           parts.push({ text: '[[', translatable: false });
-          pushPlain(inner.slice(0, pipe));
+          pushPlain(inner.slice(0, pipe), true);
           parts.push({ text: '|' + inner.slice(pipe + 1) + ']]', translatable: false });
         } else if (arrow >= 0) {
           // FASE 32: [[label->target]] — label diterjemahkan, target utuh.
           parts.push({ text: '[[', translatable: false });
-          pushPlain(inner.slice(0, arrow));
+          pushPlain(inner.slice(0, arrow), true);
           parts.push({ text: '->' + inner.slice(arrow + 2) + ']]', translatable: false });
         } else if (backArrow >= 0) {
           // FASE 32: [[target<-label]] — label (sesudah <-) diterjemahkan.
           parts.push({ text: '[[' + inner.slice(0, backArrow) + '<-', translatable: false });
-          pushPlain(inner.slice(backArrow + 2));
+          pushPlain(inner.slice(backArrow + 2), true);
           parts.push({ text: ']]', translatable: false });
         } else parts.push({ text: tok, translatable: false });
       } else if (tok.startsWith('<<')) {
@@ -1196,11 +1256,11 @@ function pushTwineSegments(content, out, rows, scope) {
     const t = trimEdgeNbsp(seg.text.trim()).replace(/\s+/g, ' ');
     if (t.length < 2 || !/[A-Za-z\u00C0-\u024F]/.test(t)) continue;
     if (t.length <= 300 && !looksTranslatable(t)) continue;
-    kept.push(t);
+    kept.push({ text: t, linkLabel: !!seg.linkLabel });
   }
   for (let i = 0; i < kept.length; i++) {
-    out.push(kept[i]);
-    if (rows) rows.push({ text: kept[i], scope: scope || null, prev: i > 0 ? kept[i - 1] : null, next: i < kept.length - 1 ? kept[i + 1] : null, line: null });
+    out.push(kept[i].text);
+    if (rows) rows.push({ text: kept[i].text, scope: scope || null, prev: i > 0 ? kept[i - 1].text : null, next: i < kept.length - 1 ? kept[i + 1].text : null, line: null, linkLabel: kept[i].linkLabel || undefined });
   }
 }
 // Dedup baris konteks berdasarkan (scope, teks), pertahankan urutan pertama.
@@ -1557,7 +1617,7 @@ const GT = (() => {
     const parts = [];
     const re = /\[\[.*?\]\]|<<.*?>>|<[^>]+>|@@.*?@@|\/%.*?%\/|\/\*.*?\*\//gs;
     const escRe = /\\[nt]/g;
-    const pushPlain = (s) => {
+    const pushPlain = (s, isLabel) => {
       if (!s) return;
       // Pisahkan spasi di awal/akhir tiap potongan teks biasa jadi segmen
       // non-terjemahan (seperti FASE 10 untuk tepi node): kunci segmen inti
@@ -1573,7 +1633,7 @@ const GT = (() => {
         const mT = /\s+$/.exec(t);
         let trail = '';
         if (mT) { trail = mT[0]; t = t.slice(0, t.length - trail.length); }
-        if (t) parts.push({ text: t, translatable: true });
+        if (t) { const pp = { text: t, translatable: true }; if (isLabel) pp.linkLabel = true; parts.push(pp); }
         if (trail) parts.push({ text: trail, translatable: false });
       };
       let eLast = 0, em;
@@ -1601,17 +1661,17 @@ const GT = (() => {
           const backArrow = inner.indexOf('<-');
           if (pipe >= 0) {
             parts.push({ text: '[[', translatable: false });
-            pushPlain(inner.slice(0, pipe));
+            pushPlain(inner.slice(0, pipe), true);
             parts.push({ text: '|' + inner.slice(pipe + 1) + ']]', translatable: false });
           } else if (arrow >= 0) {
             // FASE 32: [[label->target]] — label diterjemahkan, target utuh.
             parts.push({ text: '[[', translatable: false });
-            pushPlain(inner.slice(0, arrow));
+            pushPlain(inner.slice(0, arrow), true);
             parts.push({ text: '->' + inner.slice(arrow + 2) + ']]', translatable: false });
           } else if (backArrow >= 0) {
             // FASE 32: [[target<-label]] — label (sesudah <-) diterjemahkan.
             parts.push({ text: '[[' + inner.slice(0, backArrow) + '<-', translatable: false });
-            pushPlain(inner.slice(backArrow + 2));
+            pushPlain(inner.slice(backArrow + 2), true);
             parts.push({ text: ']]', translatable: false });
           } else parts.push({ text: tok, translatable: false });
         } else if (tok.startsWith('<<')) {
@@ -2726,7 +2786,8 @@ const QA_CODE_LABELS = {
   'numbers': 'Angka berubah', 'punctuation': 'Tanda baca akhir beda',
   'whitespace': 'Spasi/newline berubah', 'repeated-word': 'Kata berulang',
   'glossary': 'Glosarium tidak konsisten', 'length-ratio': 'Rasio panjang di luar 0,4–2,5x',
-  'fuzzy-review': 'Saran fuzzy — perlu ditinjau'
+  'fuzzy-review': 'Saran fuzzy — perlu ditinjau',
+  'dead-link-quote': 'Link mati (kutip ganda)'
 };
 // Token variabel: {tag}, [var], %s/%d/%1$s/%(name)s, \n, $var — kecuali tag
 // format {b}/{i}/{color}/{size}/{a} yang ditangani cek 'tags' (cek 3).
@@ -2822,6 +2883,14 @@ function qaCheck(source, target, opts) {
   }
   // Saran fuzzy di bawah 95% wajib ditinjau (di atas itu dianggap cukup mirip).
   if (o.fuzzyScore != null && o.fuzzyScore < 95) issues.push({ code: 'fuzzy-review', severity: 'warning', detail: 'Saran fuzzy ≈' + o.fuzzyScore + '% — perlu ditinjau sebelum dipakai.' });
+  // FASE 41 (11): label link dengan kutip ganda tak berpasangan — link
+  // mati di SugarCube (issue #173). Hanya bila segmen ini memang label
+  // link (opts.linkLabel, ditandai twineSegments/splitMacroWikiLink):
+  // teks narasi biasa dengan kutip tak berpasangan tetap tampil normal
+  // di SugarCube, jadi tidak ditandai. Pembungkus kutip asli (mis.
+  // '"..."') menyumbang jumlah '"' GENAP, jadi paritas dihitung dari
+  // inti label saja — lihat sugarcubeLinkQuoteDead.
+  if (o.linkLabel && sugarcubeLinkQuoteDead(t)) issues.push({ code: 'dead-link-quote', severity: 'error', detail: 'Terjemahan mengandung tanda kutip ganda (") yang tidak berpasangan — link ini tidak akan tampil di SugarCube (issue #173). Hapus/ubah tanda kutipnya di Daftar Teks.' });
   return issues;
 }
 /* ================= FASE 39: perbaikan variabel hilang (otomatis) =================
@@ -2986,6 +3055,240 @@ function qaGlossaryList() {
   if (typeof customGlossary !== 'undefined') add(customGlossary);
   return out;
 }
+/* ================= FASE 41: tiga cek baru di Cek Hasil =================
+   Semua cek di sini bersifat PERINGATAN (advisory), seperti QA FASE 38:
+   masuk ke checkTranslated().warnings dan tampil di UI Cek Hasil, tapi
+   TIDAK menggagalkan cek (tidak memicu pengembalian file ke asli di
+   repairFile). Alasannya: ketiganya menandai masalah yang harus ditinjau
+   dan diperbaiki manual di Daftar Teks (mis. hapus kutip di label), bukan
+   kerusakan yang aman diperbaiki otomatis.
+   1. Link mati (SugarCube issue #173, tmedwards/sugarcube-2): lexer link
+      SugarCube (wikifier-util.js, lexCoreComponents) menganggap '"' sebagai
+      pembuka string berkutip ganda — tanpa penutup, SELURUH link tidak
+      dirender. Jadi bagian Text sebuah link [[...]] dengan '"' tak
+      berpasangan membuat link itu mati. Simulasi persisnya ada di
+      sugarcubeLinkQuoteDead / parseTwineLink. Catatan: hanya '"' yang
+      berpengaruh — kutip tunggal (') tidak ditangani lexer link, dan
+      jumlah '"' GENAP (mis. '"Are you here?"' di Someone Else's Story)
+      aman. Cek file-level hanya melaporkan link yang HIDUP di asli tapi
+      MATI di hasil (bandingkan per passage, per urutan kemunculan).
+   2. Entity (twine-specs, twine-2-htmloutput-spec): isi <tw-passagedata>
+      harus satu text node; terjemahan yang mengandung '&amp;' literal
+      (mesin yang mengeluarkan entity) akan tampil apa adanya, dan '<'
+      mentah bisa memecah node menjadi elemen. Dicek lewat parse ulang
+      + perbandingan teks ter-decode asli vs hasil.
+   3. Nama cerita (TwineJS issue #639): <title>, atribut name= di
+      <tw-storydata>, dan isi passage StoryTitle harus saling cocok.
+      Web app menerjemahkan <title> (doc.title) dan passage StoryTitle,
+      tapi TIDAK PERNAH menyentuh name= — jadi setelah terjemah ketiganya
+      hampir selalu desync; cek ini melaporkannya supaya disamakan manual.
+      (FASE mendatang bisa menyinkronkan name= — bukan di sini.)
+   Semua fungsi di bawah murni + sinkron, tanpa jaringan. */
+// Simulasi slurpQuote lexer link SugarCube: '"' membuka string berkutip
+// ganda; di dalamnya '\' meng-escape karakter berikut; tanpa penutup
+// (atau kena newline) string tak berterminasi -> link mati. Di luar
+// slurp, '\' tidak berpengaruh (lexer tidak punya kasus backslash di
+// lexCoreComponents), jadi '\"' di luar string tetap membuka slurp.
+function sugarcubeLinkQuoteDead(text) {
+  const s = String(text || '');
+  let inDq = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inDq) {
+      if (c === '\\') {
+        if (s[i + 1] === '\n') return true; // '\' + newline = tak berterminasi
+        i++; continue;
+      }
+      if (c === '"') inDq = false;
+      else if (c === '\n') return true;
+    } else if (c === '"') inDq = true;
+  }
+  return inDq;
+}
+// Parse satu markup [[...]] mulai di openIdx (posisi '[[') mengikuti
+// lexer SugarCube (lexCoreComponents): '"' membuka slurp string berkutip
+// ganda; pemisah ('|', '->', '<-') dan penutup ']]' hanya dikenali di
+// luar slurp. Mengembalikan {ok:true, label, target, end} atau
+// {ok:false, reason:'quote'|'noclose', label} — reason 'quote' berarti
+// slurp '"' tak berterminasi (link mati, issue #173); 'noclose' berarti
+// tidak ada penutup (kemungkinan bukan link — dilewati pemanggil).
+function parseTwineLink(s, openIdx) {
+  let inDq = false, delim = -1, delimLen = 0, delimKind = null;
+  let j = openIdx + 2;
+  const snippet = () => s.slice(openIdx + 2, Math.min(s.length, openIdx + 62));
+  while (j < s.length) {
+    const c = s[j];
+    if (inDq) {
+      if (c === '\\') {
+        if (s[j + 1] === '\n') return { ok: false, reason: 'quote', label: snippet() };
+        j += 2; continue;
+      }
+      if (c === '"') inDq = false;
+      else if (c === '\n') return { ok: false, reason: 'quote', label: snippet() };
+    } else if (c === '"') inDq = true;
+    else if (c === ']' && s[j + 1] === ']') {
+      const inner = s.slice(openIdx + 2, j);
+      let label, target;
+      if (delim < 0) { label = null; target = inner; }
+      else if (delimKind === 'rtl') { label = inner.slice(delim + delimLen); target = inner.slice(0, delim); }
+      else { label = inner.slice(0, delim); target = inner.slice(delim + delimLen); }
+      return { ok: true, label: label == null ? null : label.trim(), target: (target || '').trim(), end: j + 2 };
+    }
+    else if (c === '\n') return { ok: false, reason: 'noclose', label: snippet() };
+    else if (delim < 0 && c === '|') { delim = j - (openIdx + 2); delimLen = 1; delimKind = 'ltr'; }
+    else if (delim < 0 && c === '-' && s[j + 1] === '>') { delim = j - (openIdx + 2); delimLen = 2; delimKind = 'ltr'; }
+    else if (delim < 0 && c === '<' && s[j + 1] === '-') { delim = j - (openIdx + 2); delimLen = 2; delimKind = 'rtl'; }
+    j++;
+  }
+  if (inDq) return { ok: false, reason: 'quote', label: snippet() };
+  return { ok: false, reason: 'noclose', label: snippet() };
+}
+// Semua kemunculan '[[...]]' di teks passage (sudah di-decode) yang
+// gagal parse karena '"' tak berterminasi: [{ord, label}] — ord = urutan
+// kemunculan '[[', dipakai mencocokkan asli vs hasil.
+function deadLinkOrdinals(text) {
+  const s = String(text || '');
+  const out = [];
+  let i = 0, ord = 0;
+  while (i < s.length) {
+    const open = s.indexOf('[[', i);
+    if (open < 0) break;
+    const r = parseTwineLink(s, open);
+    if (!r.ok && r.reason === 'quote') out.push({ ord, label: (r.label || '').trim() });
+    i = open + 2;
+    ord++;
+  }
+  return out;
+}
+// Daftar passage Twine dari HTML mentah: [{name, content}] dengan isi
+// sudah di-decode (entity -> karakter). Dipakai cek file-level FASE 41.
+function twinePassages(html) {
+  const out = [];
+  let m;
+  const re1 = /<tw-passagedata([^>]*)>([\s\S]*?)<\/tw-passagedata>/gi;
+  while ((m = re1.exec(html))) out.push({ name: passageNameFromAttrs(m[1]) || '(tanpa nama)', content: decodeHTMLEntities(m[2]).text });
+  const re2 = /<div([^>]*\btiddler="[^"]*"[^>]*)>([\s\S]*?)<\/div>/gi;
+  while ((m = re2.exec(html))) out.push({ name: passageNameFromAttrs(m[1]) || '(tanpa nama)', content: decodeHTMLEntities(m[2]).text });
+  return out;
+}
+// True bila file ini game SugarCube (cek #173 hanya berlaku di sana;
+// Harlowe/Chapbook/Snowman punya parser link sendiri). Format diambil
+// dari atribut format= di <tw-storydata>; bila tidak ada, file dengan
+// macro <<...>> dianggap SugarCube (Twine 1 / SugarCube 1).
+function isSugarCubeFile(html) {
+  const fm = /<tw-storydata[^>]*\bformat\s*=\s*"([^"]*)"/i.exec(html);
+  if (fm) return /sugarcube/i.test(fm[1]);
+  return /<</.test(html);
+}
+// Cek 1 (file-level): link yang HIDUP di asli tapi MATI di hasil
+// terjemahan (per passage, per urutan kemunculan — link yang sudah mati
+// di aslinya tidak dilaporkan: itu bug game, bukan akibat terjemahan).
+function checkDeadLinks(orig, tr) {
+  if (!isSugarCubeFile(orig)) return [];
+  const warnings = [];
+  const tByName = new Map(twinePassages(tr).map((p) => [p.name, p]));
+  for (const op of twinePassages(orig)) {
+    const tp = tByName.get(op.name);
+    if (!tp) continue;
+    const oDead = new Set(deadLinkOrdinals(op.content).map((d) => d.ord));
+    for (const d of deadLinkOrdinals(tp.content)) {
+      if (oDead.has(d.ord)) continue;
+      const lbl = (d.label || '').split('|')[0].slice(0, 60) || '(tidak terbaca)';
+      warnings.push('Link mati di passage \'' + op.name + '\': label "' + lbl + '" mengandung tanda kutip ganda (") yang tidak berpasangan — link tidak akan tampil di SugarCube (issue #173). Hapus/ubah tanda kutipnya di Daftar Teks, lalu Timpa ulang.');
+    }
+  }
+  if (warnings.length > 5) return [...warnings.slice(0, 5), '…dan ' + (warnings.length - 5) + ' link mati lainnya.'];
+  return warnings;
+}
+// Cek 2 (file-level): entity di dalam passage hasil Timpa.
+// (a) elemen HTML baru di dalam passage (asalnya hanya text node),
+// (b) entity literal baru di teks hasil (mis. '&amp;' dari mesin),
+// (c) isi berubah setelah parse ulang (entity tidak stabil).
+function checkStoryEntities(orig, tr) {
+  const warnings = [];
+  let docO, docT;
+  try {
+    docO = new DOMParser().parseFromString(orig, 'text/html');
+    docT = new DOMParser().parseFromString(tr, 'text/html');
+  } catch (e) { return []; }
+  const passMap = (doc) => {
+    const m = new Map();
+    doc.querySelectorAll('tw-passagedata, [tiddler]').forEach((el) => {
+      const name = el.getAttribute('name') || el.getAttribute('tiddler') || '(tanpa nama)';
+      if (!m.has(name)) m.set(name, el);
+    });
+    return m;
+  };
+  const ENTITY_RE = /&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]+);/g;
+  const oMap = passMap(docO), tMap = passMap(docT);
+  let docT2 = null;
+  try { docT2 = new DOMParser().parseFromString(docT.documentElement.outerHTML, 'text/html'); } catch (e) { /* abaikan */ }
+  const t2Map = docT2 ? passMap(docT2) : null;
+  for (const [name, elT] of tMap) {
+    const elO = oMap.get(name);
+    if (!elO) continue;
+    const tagsOf = (el) => [...el.children].map((c) => c.tagName.toLowerCase()).sort();
+    const added = tagsOf(elT).filter((t) => tagsOf(elO).indexOf(t) === -1);
+    if (added.length) {
+      warnings.push('Passage \'' + name + '\': isi passage mengandung elemen HTML baru (' + [...new Set(added)].join(', ') + ') — kemungkinan karakter \'<\' dari terjemahan tidak di-escape dan memecah node passage.');
+    }
+    const tText = elT.textContent || '', oText = elO.textContent || '';
+    const tEnt = [...new Set(tText.match(ENTITY_RE) || [])].filter((e) => oText.indexOf(e) === -1);
+    if (tEnt.length) {
+      warnings.push('Passage \'' + name + '\': teks hasil mengandung entity literal ' + tEnt.slice(0, 3).join(', ') + ' yang akan tampil apa adanya — terjemahan mengandung \'&\' + kata yang mirip entity; periksa dan ubah di Daftar Teks.');
+    }
+    if (t2Map) {
+      const elT2 = t2Map.get(name);
+      if (elT2 && elT2.textContent !== tText) {
+        warnings.push('Passage \'' + name + '\': isi passage berubah setelah parse ulang (entity tidak stabil) — periksa karakter \'&\' / \'<\' di terjemahannya.');
+      }
+    }
+  }
+  return warnings;
+}
+// Cek 3 (file-level): konsistensi nama cerita — <title>, atribut name=
+// di <tw-storydata>, dan isi passage StoryTitle harus saling cocok
+// (TwineJS #639). Bila ketiganya konsisten di asli tapi tidak di hasil,
+// sebutkan mana yang berubah.
+function checkStoryName(orig, tr) {
+  const isTwine = /<tw-storydata|<div[^>]+tiddler="/i.test(orig);
+  if (!isTwine) return [];
+  const dec = (s) => (s == null ? null : decodeHTMLEntities(s).text);
+  const stripTags = (s) => String(s).replace(/<[^>]*>/g, '').trim();
+  const titleOf = (html) => {
+    const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+    return m ? stripTags(dec(m[1])) : null;
+  };
+  const nameOf = (html) => {
+    const m = /<tw-storydata[^>]*?\sname\s*=\s*"([^"]*)"/i.exec(html);
+    return m ? (dec(m[1]) || '').trim() : null;
+  };
+  const storyTitleOf = (html) => {
+    let m = /<tw-passagedata[^>]*?\sname\s*=\s*"StoryTitle"[^>]*>([\s\S]*?)<\/tw-passagedata>/i.exec(html);
+    if (!m) m = /<div[^>]*?\btiddler\s*=\s*"StoryTitle"[^>]*>([\s\S]*?)<\/div>/i.exec(html);
+    return m ? stripTags(dec(m[1])) : null;
+  };
+  const oT = titleOf(orig), oN = nameOf(orig), oS = storyTitleOf(orig);
+  const tT = titleOf(tr), tN = nameOf(tr), tS = storyTitleOf(tr);
+  const parts = [];
+  if (tT != null) parts.push(['<title>', tT]);
+  if (tN != null) parts.push(['nama story', tN]);
+  if (tS != null) parts.push(['StoryTitle', tS]);
+  if (parts.length < 2) return [];
+  if (new Set(parts.map((p) => p[1])).size === 1) return [];
+  const short = (v) => v.length > 40 ? v.slice(0, 40) + '…' : v;
+  const desc = parts.map((p) => p[0] + '="' + short(p[1]) + '"').join(' vs ');
+  let hint = '';
+  const oVals = [oT, oN, oS].filter((v) => v != null);
+  if (oVals.length >= 2 && new Set(oVals).size === 1) {
+    const changed = [];
+    if (tT !== oT) changed.push('<title>');
+    if (tN !== oN) changed.push('nama story');
+    if (tS !== oS) changed.push('StoryTitle');
+    if (changed.length) hint = ' Yang berubah saat terjemah: ' + changed.join(', ') + ' — samakan ketiganya secara manual (Twine menampilkan nama lama bila tidak sama).';
+  }
+  return ['Nama cerita tidak konsisten di file hasil: ' + desc + '.' + (hint || ' Samakan ketiganya secara manual (TwineJS #639) — web app tidak mengubah nama otomatis.')];
+}
 // Ringkasan QA untuk satu file: pasangan (sumber, terjemahan dari cache).
 // Terjemahan diambil dari cache — sama dengan yang diterapkan Timpa.
 function qaSummaryForFile(fileRec, src, tgt, glossaryList) {
@@ -2994,7 +3297,7 @@ function qaSummaryForFile(fileRec, src, tgt, glossaryList) {
   const samples = [];
   for (const row of rows) {
     const tr = GT.cacheLookup(src, tgt, row.scope, row.text);
-    const issues = qaCheck(row.text, tr || '', { glossary: glossaryList });
+    const issues = qaCheck(row.text, tr || '', { glossary: glossaryList, linkLabel: row.linkLabel });
     if (tr) translated++; else untranslated++;
     let hasErr = false, hasWarn = false;
     for (const is of issues) {
@@ -3022,11 +3325,11 @@ function splitCacheKey(key) {
 function collectTmxPairs(src, tgt, glossaryList) {
   const pairs = []; let skippedErrors = 0, skippedSame = 0;
   const seen = new Set();
-  const addPair = (source, target, scope) => {
+  const addPair = (source, target, scope, linkLabel) => {
     if (!source || !target || !target.trim() || target.trim() === source.trim()) { skippedSame++; return; }
     const k = source + '\n' + target;
     if (seen.has(k)) return;
-    const issues = qaCheck(source, target, { glossary: glossaryList });
+    const issues = qaCheck(source, target, { glossary: glossaryList, linkLabel });
     if (issues.some((i) => i.severity === 'error')) { skippedErrors++; return; }
     seen.add(k);
     pairs.push({ source, target, scope, warnings: issues.filter((i) => i.severity === 'warning').map((i) => i.code) });
@@ -3039,7 +3342,7 @@ function collectTmxPairs(src, tgt, glossaryList) {
   if (typeof textListRows !== 'undefined' && textListRows && textListRows.length) {
     textListRows.forEach((row, i) => {
       const t = (typeof textListGet === 'function' ? textListGet(i) : (textListEdits[i] || '')).trim();
-      if (t) addPair(row.text, t, row.scope);
+      if (t) addPair(row.text, t, row.scope, row.linkLabel);
     });
   }
   return { pairs, skippedErrors, skippedSame };
@@ -3089,6 +3392,10 @@ function checkTranslated(fileRec) {
   const orig = fileRec.content || '';
   const tr = fileRec.translatedContent || '';
   const issues = [];
+  // FASE 41: peringatan (warnings) — TIDAK menggagalkan cek dan tidak
+  // memicu pengembalian file ke asli di repairFile; hanya dilaporkan di
+  // UI Cek Hasil supaya ditinjau manual.
+  const warnings = [];
   if (fileRec.ext === 'html' || fileRec.ext === 'htm') {
     // Cek macro/link Twine hanya untuk game Twine (yang memakai << >> [[ ]]).
     // Game HTML biasa tidak memakai penanda itu, jadi selisih jumlahnya bukan masalah.
@@ -3128,6 +3435,13 @@ function checkTranslated(fileRec) {
       } catch (e) { return ''; }
     };
     if (domTagNames(orig) !== domTagNames(tr)) issues.push('Struktur tag HTML berubah');
+    // FASE 41: tiga cek peringatan untuk game Twine (link mati, entity,
+    // nama cerita) — tidak menggagalkan cek, hanya dilaporkan.
+    if (isTwine) {
+      warnings.push(...checkDeadLinks(orig, tr));
+      warnings.push(...checkStoryEntities(orig, tr));
+      warnings.push(...checkStoryName(orig, tr));
+    }
   } else {
     for (const [tok, label] of [['{', 'kurung {'], ['}', 'kurung }'], ['[', 'kurung ['], [']', 'kurung ]'], ['%s', 'placeholder %s'], ['%d', 'placeholder %d']]) {
       if (countOf(orig, tok) !== countOf(tr, tok)) issues.push(label + ': asli ' + countOf(orig, tok) + ' vs hasil ' + countOf(tr, tok));
@@ -3137,7 +3451,7 @@ function checkTranslated(fileRec) {
       if (countOf(orig, '"') !== countOf(tr, '"')) issues.push('Jumlah tanda kutip berubah');
     }
   }
-  return { ok: issues.length === 0, issues };
+  return { ok: issues.length === 0, issues, warnings };
 }
 async function repairFile(fileRec, src, tgt) {
   const fixed = [];
@@ -3660,7 +3974,7 @@ function renderTextList() {
     const row = textListRows[i];
     const t = textListEdits[i] || '';
     const fz = textListFuzzy[i];
-    const issues = qaCheck(row.text, t, { glossary: qaGloss, fuzzyScore: fz ? fz.score : null });
+    const issues = qaCheck(row.text, t, { glossary: qaGloss, fuzzyScore: fz ? fz.score : null, linkLabel: row.linkLabel });
     qaMemo[i] = issues;
     return issues;
   };
@@ -4064,11 +4378,11 @@ btnRetry.addEventListener('click', async () => {
 btnCheckResult.addEventListener('click', () => {
   const done = allFiles.filter((f) => f.translatedContent !== null);
   if (!done.length) { checkOutEl.textContent = 'Belum ada file yang diterjemahkan.'; return; }
-  let html = '<table><thead><tr><th>File</th><th>Hasil cek</th><th>Masalah</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>File</th><th>Hasil cek</th><th>Masalah</th><th>Peringatan (FASE 41)</th></tr></thead><tbody>';
   for (const f of done) {
     const chk = checkTranslated(f);
     f.checkResult = chk;
-    html += '<tr><td class="file">' + esc(f.path) + '</td><td>' + (chk.ok ? '<span class="badge badge-ok">OK</span>' : '<span class="badge badge-fail">Gagal</span>') + '</td><td>' + (chk.issues.length ? esc(chk.issues.join('; ')) : '—') + '</td></tr>';
+    html += '<tr><td class="file">' + esc(f.path) + '</td><td>' + (chk.ok ? '<span class="badge badge-ok">OK</span>' : '<span class="badge badge-fail">Gagal</span>') + '</td><td>' + (chk.issues.length ? esc(chk.issues.join('; ')) : '—') + '</td><td>' + (chk.warnings && chk.warnings.length ? esc(chk.warnings.join('; ')) : '—') + '</td></tr>';
   }
   html += '</tbody></table>';
   // FASE 38: QA per teks (ala locqa) — pasangan (sumber, terjemahan dari
@@ -4092,8 +4406,9 @@ btnCheckResult.addEventListener('click', () => {
   checkOutEl.innerHTML = html;
   btnDownloadQa.disabled = false;
   const bad = done.filter((f) => f.checkResult && !f.checkResult.ok).length;
-  statusEl.textContent = (bad ? bad + ' file bermasalah — klik "Perbaiki". ' : 'Semua file lolos cek: macro, link, tag, dan nama passage utuh. ') + 'QA per teks: ' + qaTotal + ' pasangan, ' + qaErr + ' error, ' + qaWarn + ' warning.';
-  log('Cek hasil: ' + (done.length - bad) + '/' + done.length + ' file OK. QA: ' + qaErr + ' error, ' + qaWarn + ' warning dari ' + qaTotal + ' pasangan.');
+  const warnTotal = done.reduce((a, f) => a + ((f.checkResult && f.checkResult.warnings) ? f.checkResult.warnings.length : 0), 0);
+  statusEl.textContent = (bad ? bad + ' file bermasalah — klik "Perbaiki". ' : 'Semua file lolos cek: macro, link, tag, dan nama passage utuh. ') + 'QA per teks: ' + qaTotal + ' pasangan, ' + qaErr + ' error, ' + qaWarn + ' warning.' + (warnTotal ? ' Peringatan FASE 41 (link mati / entity / nama cerita): ' + warnTotal + '.' : '');
+  log('Cek hasil: ' + (done.length - bad) + '/' + done.length + ' file OK. QA: ' + qaErr + ' error, ' + qaWarn + ' warning dari ' + qaTotal + ' pasangan.' + (warnTotal ? ' Peringatan FASE 41: ' + warnTotal + '.' : ''));
 });
 btnRepair.addEventListener('click', async () => {
   const done = allFiles.filter((f) => f.translatedContent !== null);
@@ -4261,6 +4576,10 @@ btnReport.addEventListener('click', () => {
   lines.push('');
   for (const f of allFiles) {
     lines.push('- ' + f.path + ' [' + f.kind + '] — ' + f.count + ' teks, bahasa: ' + f.lang + ', status: ' + f.status + (f.note ? ' (' + f.note + ')' : '') + (f.translatedContent !== null ? ', diterjemahkan' : ''));
+    if (f.checkResult) {
+      lines.push('    cek: ' + (f.checkResult.ok ? 'OK' : f.checkResult.issues.join('; ')));
+      if (f.checkResult.warnings && f.checkResult.warnings.length) lines.push('    peringatan: ' + f.checkResult.warnings.join('; '));
+    }
     (f.samples || []).slice(0, 3).forEach((s) => lines.push('    contoh: "' + s.slice(0, 120) + '"'));
   }
   const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
@@ -5334,7 +5653,9 @@ window.GTGabungan = {
   looksTranslatable, detectLang, isLangFile, analyzeFile, scanFiles,
   extractFromHTML, extractFromHTMLData, extractFromJSON, extractFromRpy, extractFromPo, extractFromCsv, extractFromXml,
   extractQuotedRanges, isCodeContextString, escapeForQuote, protectSegments, translateSegment, getMissingVars, decodeHTMLEntities, encodeHTMLEntities,
-  splitMacroToken, macroQuoteTranslatable, isDangerousMacro, codeContainerEnd,
+  splitMacroToken, splitMacroWikiLink, macroQuoteTranslatable, isDangerousMacro, codeContainerEnd,
+  sugarcubeLinkQuoteDead, parseTwineLink, deadLinkOrdinals, twinePassages, isSugarCubeFile,
+  checkDeadLinks, checkStoryEntities, checkStoryName,
   repairMissingVars, missingVarOccurrences,
   unitKey, twScope, fileScope, rowContextLabel, dedupeRows, rowsFromStrings, parseTextList,
   levenshtein, similarity, qaCheck, qaGlossaryList, qaSummaryForFile, splitCacheKey, collectTmxPairs, tmxBuild, buildQaReportMd, QA_CODE_LABELS,
