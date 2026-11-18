@@ -594,6 +594,33 @@ function extractStringLiterals(code) {
 function extractQuotedRanges(code) {
   return scanJSStrings(code);
 }
+/* FASE 33: true bila string ber-quotes ini dipakai sebagai KODE, bukan teks
+   pemain. Pengganti filter spasi lama (/\s/.test) di jalur terjemah
+   script/JS: kata UI satu kata ("Settings", "Health") kini ikut
+   diterjemahkan, sementara identifier/kunci kode ("save", "inventory",
+   "attack") tetap utuh. r = range dari scanJSStrings ({start, end, quote,
+   text}); start = indeks kutip buka, end = indeks setelah kutip tutup. */
+function isCodeContextString(code, r) {
+  const before = code.slice(0, r.start);
+  // a. Argumen panggilan kode: getElementById("inventory"),
+  //    localStorage.getItem("save"), addEventListener("click", ...),
+  //    classList.add/remove/toggle("active"), emit("attack").
+  //    FASE 34: + hasOwnProperty/getOwnPropertyNames/propertyIsEnumerable
+  //    — hasOwnProperty("own") yang diterjemahkan merusak logika audio
+  //    SugarCube (pengecekan selalu false).
+  if (/\b(getElementById|querySelector|querySelectorAll|getElementsBy(?:ClassName|TagName|Name)|getItem|setItem|removeItem|addEventListener|removeEventListener|emit|once|on|off|add|remove|toggle|createElement|getContext|getAttribute|setAttribute|hasAttribute|removeAttribute|setProperty|getPropertyValue|removeProperty|require|import|hasOwnProperty|getOwnPropertyNames|propertyIsEnumerable)\s*\(\s*$/.test(before)) return true;
+  // b. Module specifier: from "lodash", import "x".
+  if (/\b(?:from|import)\s+$/.test(before)) return true;
+  // c. Akses properti braket: style["display"], obj["key"].
+  //    (Regex spesifikasi /\.prop\[/ tidak menangkap obj["key"] — diperluas
+  //    ke identifier + "[". Kata kunci return/yield/typeof dikecualikan:
+  //    return ["Yes", "No"] adalah array literal, bukan akses properti.)
+  const bm = /\b([A-Za-z_$][\w$]*)\s*\[\s*$/.exec(before);
+  if (bm && !/^(return|yield|typeof)$/.test(bm[1])) return true;
+  // d. Kunci objek ("gold": 100) / label case (case "attack":).
+  if (/^\s*:/.test(code.slice(r.end))) return true;
+  return false;
+}
 /* True bila atribut tags="..." pada tag pembuka passage mengandung
    widget / stylesheet / script — passage kode, bukan teks pemain.
    (Padanan isCodePassage di jalur terjemah, tapi untuk string mentah,
@@ -606,6 +633,18 @@ function isCodeTags(attrs) {
   if (!m) return false;
   const tags = m[1].split(/\s+/);
   return tags.includes('widget') || tags.includes('stylesheet') || tags.includes('script');
+}
+/* FASE 34: id script library/mesin Twine (jQuery, SugarCube, Harlowe,
+   Chapbook) — string di dalamnya bukan teks pemain; menerjemahkannya
+   merusak deteksi fitur jQuery (perbandingan tanggal), nama properti
+   SugarCube (hasOwnProperty), dan CSS inline. Script TANPA id dan
+   twine-user-script (kode game sendiri) TETAP diterjemahkan — game
+   HTML biasa (mis. Wasteland) bergantung pada ini. */
+const ENGINE_SCRIPT_ID_RE = /^(script-)?(sugarcube|libraries|jquery|harlowe|chapbook)/i;
+function isEngineScriptId(id) { return !!id && ENGINE_SCRIPT_ID_RE.test(id); }
+function isEngineScriptAttrs(attrs) {
+  const m = /\bid\s*=\s*["']([^"']+)["']/i.exec(attrs || '');
+  return m ? isEngineScriptId(m[1]) : false;
 }
 function extractFromHTML(text) {
   const out = []; let m;
@@ -652,6 +691,10 @@ function extractFromHTML(text) {
       // passage (pushTwineSegments) — jangan tambahkan lagi sebagai satu entri
       // mentah (mis. "[[Continue->Next Passage]]" utuh).
       if (t.includes('[[')) return;
+      // FASE 34: baris berisi @@...@@ juga sudah ditangani jalur passage
+      // (twineSegments memisah gaya dari isi) — jangan tambahkan lagi
+      // sebagai satu entri mentah (mis. "@@font-size:xx-large;Judul@@").
+      if (t.includes('@@')) return;
       if (looksTranslatable(t)) out.push(t);
     });
   });
@@ -735,15 +778,29 @@ function extractFromText(text) {
 function analyzeFile(name, content) {
   const ext = extOf(name);
   let strings = [];
+  let skippedEngineStrings = 0; // FASE 34: string mesin yang dilewati
   if (ext === 'html' || ext === 'htm') {
     strings = extractFromHTML(content);
     // Pindai string JS hanya di dalam <script> inline, bukan di seluruh HTML:
     // pemindai JS mengira '/' di tag penutup HTML (mis. </title>) sebagai awal
     // regex, lalu kehilangan string sesudahnya.
+    // FASE 34: lewati script library/mesin (id script-sugarcube /
+    // script-libraries / jquery / harlowe / chapbook) — string mesin
+    // bukan teks pemain (87% Daftar Teks Someone Else's Story adalah
+    // string mesin). Hitung yang dilewati untuk info di hasil scan.
     const scripts = [];
-    const re = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi; let m;
-    while ((m = re.exec(content))) scripts.push(m[1]);
+    const skippedEngine = new Set();
+    const re = /<script([^>]*)>([\s\S]*?)<\/script>/gi; let m;
+    while ((m = re.exec(content))) {
+      if (/\bsrc\s*=/.test(m[1])) continue; // script eksternal
+      if (isEngineScriptAttrs(m[1])) {
+        extractStringLiterals(m[2]).forEach((s) => skippedEngine.add(s));
+        continue;
+      }
+      scripts.push(m[2]);
+    }
     if (scripts.length) extractStringLiterals(scripts.join('\n')).forEach((s) => { if (!strings.includes(s)) strings.push(s); });
+    skippedEngineStrings = skippedEngine.size;
   }
   else if (ext === 'js' || ext === 'mjs' || ext === 'gd' || ext === 'tscn' || ext === 'tres') strings = extractStringLiterals(content);
   else if (ext === 'json') strings = extractFromJSON(content);
@@ -755,7 +812,7 @@ function analyzeFile(name, content) {
   else if (ext === 'css') { const re = /content\s*:\s*["']([^"']+)["']/gi; let m; while ((m = re.exec(content))) if (looksTranslatable(m[1])) strings.push(m[1]); strings = dedupeKeepOrder(strings); }
   else strings = extractStringLiterals(content);
   const chars = strings.reduce((a, s) => a + s.length, 0);
-  return { name, ext, kind: kindLabel(name), count: strings.length, chars, lang: strings.length ? detectLang(strings) : '-', samples: strings.slice(0, 8), isLangFile: isLangFile(name), strings };
+  return { name, ext, kind: kindLabel(name), count: strings.length, chars, lang: strings.length ? detectLang(strings) : '-', samples: strings.slice(0, 8), isLangFile: isLangFile(name), strings, skippedEngineStrings };
 }
 /* Memeriksa apakah variabel (%s, %d, {gold}, [item]) di teks asli
    masih ada di teks terjemahan. Mengembalikan array variabel yang HILANG. */
@@ -941,6 +998,28 @@ function twineSegments(text) {
           parts.push({ text: ']]', translatable: false });
         } else parts.push({ text: tok, translatable: false });
       } else if (tok.startsWith('<<')) splitMacroToken(tok, parts);
+      else if (tok.startsWith('@@')) {
+        // FASE 34: @@gaya;isi@@ (SugarCube) — gaya CSS sebelum ';'
+        // pertama tidak pernah diterjemahkan; isi diterjemahkan normal;
+        // tanpa ';', seluruh isi diterjemahkan. Isi bisa berisi tautan
+        // / macro (mis. @@.debug-text;[[DEBUG: ...|...]]@@) — jadi
+        // tokenisasi ulang lewat segmentPlain, bukan pushPlain.
+        // segmentPlain memakai regex bersama (re): simpan posisi lanjut
+        // loop luar dan kembalikan setelah panggilan rekursif.
+        const inner = tok.slice(2, -2);
+        const semi = inner.indexOf(';');
+        const resume = m.index + tok.length;
+        if (semi >= 0) {
+          parts.push({ text: '@@' + inner.slice(0, semi + 1), translatable: false });
+          segmentPlain(inner.slice(semi + 1));
+          parts.push({ text: '@@', translatable: false });
+        } else {
+          parts.push({ text: '@@', translatable: false });
+          segmentPlain(inner);
+          parts.push({ text: '@@', translatable: false });
+        }
+        re.lastIndex = resume;
+      }
       else parts.push({ text: tok, translatable: false });
       last = m.index + tok.length;
     }
@@ -1236,6 +1315,28 @@ const GT = (() => {
             parts.push({ text: ']]', translatable: false });
           } else parts.push({ text: tok, translatable: false });
         } else if (tok.startsWith('<<')) splitMacroToken(tok, parts);
+        else if (tok.startsWith('@@')) {
+          // FASE 34: @@gaya;isi@@ (SugarCube) — gaya CSS sebelum ';'
+          // pertama tidak pernah diterjemahkan; isi diterjemahkan normal;
+          // tanpa ';', seluruh isi diterjemahkan. Isi bisa berisi tautan
+          // / macro (mis. @@.debug-text;[[DEBUG: ...|...]]@@) — jadi
+          // tokenisasi ulang lewat segmentPlain, bukan pushPlain.
+          // segmentPlain memakai regex bersama (re): simpan posisi lanjut
+          // loop luar dan kembalikan setelah panggilan rekursif.
+          const inner = tok.slice(2, -2);
+          const semi = inner.indexOf(';');
+          const resume = m.index + tok.length;
+          if (semi >= 0) {
+            parts.push({ text: '@@' + inner.slice(0, semi + 1), translatable: false });
+            segmentPlain(inner.slice(semi + 1));
+            parts.push({ text: '@@', translatable: false });
+          } else {
+            parts.push({ text: '@@', translatable: false });
+            segmentPlain(inner);
+            parts.push({ text: '@@', translatable: false });
+          }
+          re.lastIndex = resume;
+        }
         else parts.push({ text: tok, translatable: false });
         last = m.index + tok.length;
       }
@@ -1569,7 +1670,7 @@ const GT = (() => {
     function guardCheckOne(t, clean) {
       if (isHallucinatedOutput(clean, t)) { guardRejected++; return false; }
       const key = clean.trim().toLowerCase();
-      if (key.length < 8) return true;
+      if (key.length < 15) return true; // FASE 33: collapse hanya dicek untuk hasil >= 15 karakter
       let rec = guardSeen.get(key);
       if (!rec) { rec = { sources: new Set(), keys: new Set() }; guardSeen.set(key, rec); }
       rec.sources.add(t);
@@ -1594,7 +1695,7 @@ const GT = (() => {
         const clean = normalizeSpaces(out[i], t);
         if (isHallucinatedOutput(clean, t)) { rejected.add(i); guardRejected++; return; }
         const key = clean.trim().toLowerCase();
-        if (key.length >= 8) { if (!counts.has(key)) counts.set(key, []); counts.get(key).push(i); }
+        if (key.length >= 15) { if (!counts.has(key)) counts.set(key, []); counts.get(key).push(i); }
       });
       for (const idxs of counts.values()) {
         if (new Set(idxs.map((i) => batch[i])).size >= 3) idxs.forEach((i) => { if (!rejected.has(i)) guardRejected++; rejected.add(i); });
@@ -1609,7 +1710,20 @@ const GT = (() => {
     for (const t of texts) {
       const k = cacheKey(src, tgt, t);
       if (cache.has(k)) result.set(t, { translated: cache.get(k), fromCache: true, failed: false });
-      else todo.push(t);
+      else {
+        // FASE 34: kunci cache dari Daftar Teks dinormalisasi (spasi
+        // ganda diciutkan + tepi di-trim saat scan), sementara segmen
+        // di file bisa berisi spasi ganda / spasi tepi ("Of course,"
+        // dua spasi, " in <<next>>") — coba juga kunci ternormalisasi
+        // supaya Timpa menemukannya. Hanya lookup; hasil tetap dikunci
+        // teks asli (t) supaya applyTranslations cocok.
+        const nk = t.trim().replace(/\s+/g, ' ');
+        if (nk !== t) {
+          const nkKey = cacheKey(src, tgt, nk);
+          if (cache.has(nkKey)) result.set(t, { translated: cache.get(nkKey), fromCache: true, failed: false });
+          else todo.push(t);
+        } else todo.push(t);
+      }
     }
     onProgress(texts.length - todo.length, texts.length, 'cache');
     if (todo.length === 0) return result;
@@ -1953,7 +2067,46 @@ window.GT = GT;
 
 /* ================= Bagian 3: terjemah per jenis file ================= */
 function countOf(str, sub) { return str.split(sub).length - 1; }
-function escapeForQuote(s, q) { return s.split(q).join('\\' + q); }
+/* FASE 34: escaper satu-pass yang benar untuk string JS ber-quotes.
+   Dipakai translateByRanges saat menulis kembali terjemahan ke dalam
+   literal '...' / "...". Escape sequence standar (\n \r \t \b \f \v
+   \0 \\ \' \" \uXXXX \xXX) dipertahankan apa adanya supaya NILAI
+   string tidak berubah; backslash lain digandakan; karakter quote
+   yang tidak ter-escape di-escape. Perbaikan naif "gandakan semua
+   backslash dulu" SALAH: \n akan jadi teks literal \n. Kode lama
+   (split(q).join('\\'+q)) hanya meng-escape quote — string SugarCube
+   'track object\'s ...' pecah jadi SyntaxError (FASE 33: seluruh
+   script SugarCube gagal parse). Karakter kontrol mentah (\n, \r, \t
+   sungguhan) juga di-escape, karena newline mentah di dalam literal
+   satu baris adalah SyntaxError. */
+function escapeForQuote(s, q) {
+  const keep = 'nrtbfv0\\\'"ux';
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '\\') {
+      const nx = s[i + 1];
+      if (nx === undefined) { out += '\\\\'; continue; }
+      // \0 hanya standar bila TIDAK diikuti angka (\01 adalah oktal
+      // warisan — SyntaxError di strict mode); kalau diikuti angka,
+      // gandakan backslash-nya.
+      if (nx === '0' && /[0-9]/.test(s[i + 2] || '')) { out += '\\\\'; continue; }
+      if (keep.indexOf(nx) >= 0) { out += c + nx; i++; }
+      else out += '\\\\';
+    } else if (c === q) {
+      out += '\\' + q;
+    } else if (c === '\n') {
+      out += '\\n';
+    } else if (c === '\r') {
+      out += '\\r';
+    } else if (c === '\t') {
+      out += '\\t';
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
 async function translateByRanges(content, ranges, src, tgt, opts) {
   // ranges: [{start, end, quote, text}] — terjemahkan teks di dalam quotes, ganti dari belakang.
   // Placeholder di dalam tiap teks ({tag}, [var], %s, \n, $var) dilindungi dulu lewat
@@ -2019,15 +2172,20 @@ async function translateFileContent(fileRec, src, tgt, opts) {
     // sering tinggal di JavaScript (bukan di teks HTML yang terlihat), dan
     // GT.translateFile sengaja melewati <script> — tanpa ini game seperti
     // Wasteland Survivor tetap ~97% Inggris padahal hasil scan 516 teks.
-    // Perlakuan sama seperti file .js: hanya string ber-quotes yang berisi
-    // spasi dan lolos looksTranslatable (identifier/kelas CSS terlewat).
+    // Perlakuan sama seperti file .js: string ber-quotes yang lolos
+    // looksTranslatable (FASE 33: kata tunggal ikut diterjemahkan;
+    // isCodeContextString melewati string konteks kode seperti
+    // getItem("save") atau kunci objek {"gold": 100}).
     let htmlOut = out.html;
     let sApplied = 0, sFailed = 0, sCached = 0; const sFailedTexts = []; const sUnique = new Set();
     try {
       const doc2 = new DOMParser().parseFromString(htmlOut, 'text/html');
-      const scripts = [...doc2.querySelectorAll('script')].filter((s) => !s.src);
+      // FASE 34: lewati script library/mesin (id script-sugarcube /
+      // script-libraries / jquery / harlowe / chapbook) — isinya bukan
+      // teks pemain; menerjemahkannya merusak mesin game.
+      const scripts = [...doc2.querySelectorAll('script')].filter((s) => !s.src && !isEngineScriptId(s.id));
       for (const s of scripts) {
-        const ranges = extractQuotedRanges(s.textContent).filter((r) => looksTranslatable(r.text) && /\s/.test(r.text) && r.text.trim() !== 'use strict');
+        const ranges = extractQuotedRanges(s.textContent).filter((r) => looksTranslatable(r.text) && !isCodeContextString(s.textContent, r) && r.text.trim() !== 'use strict');
         if (!ranges.length) continue;
         for (const r of ranges) sUnique.add(r.text);
         const r2 = await translateByRanges(s.textContent, ranges, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
@@ -2157,7 +2315,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
     return { content: out, applied, failed, cached, failedTexts: [...new Set(failedTexts)], uniqueTexts: uniq.length };
   }
   if (ext === 'js' || ext === 'mjs' || ext === 'gd' || ext === 'tscn' || ext === 'tres') {
-    const ranges = extractQuotedRanges(content).filter((r) => looksTranslatable(r.text) && /\s/.test(r.text) && r.text.trim() !== 'use strict');
+    const ranges = extractQuotedRanges(content).filter((r) => looksTranslatable(r.text) && !isCodeContextString(content, r) && r.text.trim() !== 'use strict');
     const out = await translateByRanges(content, ranges, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
     return { ...out, uniqueTexts: [...new Set(ranges.map((r) => r.text))].length };
   }
@@ -2174,7 +2332,8 @@ function checkTranslated(fileRec) {
     const isTwine = /<tw-storydata|<tw-passagedata|<div[^>]+tiddler="/i.test(orig);
     if (isTwine) {
       // FASE 32: jumlah blok verbatim harus sama sebelum/sesudah terjemah.
-      const pairs = [['<<', 'macro buka'], ['>>', 'macro tutup'], ['[[', 'link buka'], [']]', 'link tutup'], ['{{{', 'blok {{{ buka'], ['}}}', 'blok }}} tutup']];
+      // FASE 34: penanda @@ juga (gaya @@...@@ harus utuh).
+      const pairs = [['<<', 'macro buka'], ['>>', 'macro tutup'], ['[[', 'link buka'], [']]', 'link tutup'], ['{{{', 'blok {{{ buka'], ['}}}', 'blok }}} tutup'], ['@@', 'penanda @@']];
       for (const [tok, label] of pairs) {
         if (countOf(orig, tok) !== countOf(tr, tok)) issues.push(label + ': asli ' + countOf(orig, tok) + ' vs hasil ' + countOf(tr, tok));
       }
@@ -2383,7 +2542,7 @@ function scanFiles(files) {
   for (const f of files) {
     if (f.content === null || f.content === undefined) continue;
     const a = analyzeFile(f.path, f.content);
-    f.count = a.count; f.chars = a.chars; f.lang = a.lang; f.samples = a.samples; f.isLangFile = a.isLangFile; f.strings = a.strings;
+    f.count = a.count; f.chars = a.chars; f.lang = a.lang; f.samples = a.samples; f.isLangFile = a.isLangFile; f.strings = a.strings; f.skippedEngineStrings = a.skippedEngineStrings || 0;
     if (!SUPPORTED_EXTS.includes(f.ext)) { f.status = 'tidak-didukung'; f.note = 'Jenis file tidak didukung terjemahan'; }
     else if (f.count === 0) { f.status = 'tidak-ada-teks'; f.note = 'Tidak ada teks'; }
     else f.status = 'didukung';
@@ -2436,7 +2595,8 @@ function renderScan(summary) {
       ? '<details><summary>Lihat contoh teks (' + f.samples.length + ')</summary><ul>' + f.samples.map((s) => '<li>' + esc(s) + '</li>').join('') + '</ul></details>'
       : '<span class="muted">—</span>';
     const note = f.note ? '<br><span class="muted">' + esc(f.note) + '</span>' : '';
-    tr.innerHTML = '<td>' + cb + '</td><td class="file">' + esc(f.path) + '<br>' + badge + note + '<br>' + samples + '</td>'
+    const engineNote = (f.skippedEngineStrings > 0) ? '<br><span class="muted">⏭ ' + f.skippedEngineStrings + ' string mesin (jQuery/SugarCube/dll.) dilewati — bukan teks pemain.</span>' : '';
+    tr.innerHTML = '<td>' + cb + '</td><td class="file">' + esc(f.path) + '<br>' + badge + note + engineNote + '<br>' + samples + '</td>'
       + '<td>' + esc(f.kind) + '</td><td><b>' + f.count + '</b></td>'
       + '<td><span class="badge badge-lang">' + esc(f.lang) + '</span></td>'
       + '<td>' + (f.status === 'didukung' ? 'Didukung' : f.status === 'kemungkinan' ? 'Kemungkinan' : f.status === 'tidak-didukung' ? '<b style="color:#ef4444">Tidak didukung</b>' : '—') + '</td>';
@@ -4211,7 +4371,7 @@ function renpyPoBuild(files, lang) {
 window.GTGabungan = {
   looksTranslatable, detectLang, isLangFile, analyzeFile, scanFiles,
   extractFromHTML, extractFromJSON, extractFromRpy, extractFromPo, extractFromCsv, extractFromXml,
-  extractQuotedRanges, protectSegments, translateSegment, getMissingVars, decodeHTMLEntities, encodeHTMLEntities,
+  extractQuotedRanges, isCodeContextString, escapeForQuote, protectSegments, translateSegment, getMissingVars, decodeHTMLEntities, encodeHTMLEntities,
   splitMacroToken, macroQuoteTranslatable, isDangerousMacro,
   translateFileContent, checkTranslated, repairFile, compiledHint, kindLabel,
   renpyMd5, renpyLexerDecode, renpyPyDecode, renpyEncodeSayString, renpyStringQuote,
