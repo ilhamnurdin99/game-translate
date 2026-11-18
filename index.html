@@ -2795,7 +2795,58 @@ const QA_VAR_RE = /\{[^}]*\}|\[[^\]]*\]|%(\d+\$)?[sd]|%\([^)]+\)[sd]|\\n|\$[A-Za
 const QA_TAG_BRACE_RE = /^\{\/?(b|i|color|size|a)\b/;
 const QA_TAG_RE = /\{\/?(b|i|color|size|a)(?:=[^}]*)?\}|<\/?(b|i|u|strong|em|br)\s*\/?>/gi;
 const QA_NUM_RE = /\b\d+(?:[.,]\d+)?\b/g;
-const QA_REPEAT_RE = /([\p{L}\d']{2,})\s+\1\b/giu;
+// FASE 42: \b di depan — tanpa itu regex bisa cocok di tengah kata
+// ("terjadi di" terbaca "di di" dari ekor "terjadi" + kata "di").
+const QA_REPEAT_RE = /\b([\p{L}\d']{2,})\s+\1\b/giu;
+// FASE 42: kata fungsi bahasa Indonesia yang wajar berulang — pengulangan
+// kata-kata ini bukan kesalahan, jadi cek kata berulang mengabaikannya.
+const QA_REPEAT_STOPWORDS_ID = new Set(['di', 'ke', 'dari', 'yang', 'dan', 'atau', 'dengan', 'untuk', 'pada', 'adalah', 'ini', 'itu', 'saya', 'aku', 'kamu', 'anda', 'dia', 'mereka', 'kita', 'kami']);
+// FASE 42: decode HTML entity — digit di dalam entity (mis. "39" dari
+// &#39;) bukan angka sungguhan. Entity numerik (desimal & heksadesimal)
+// + entity bernama umum; entity bernama yang tidak dikenal dihapus supaya
+// digit di namanya (mis. &sup2;) tidak ikut terhitung.
+const QA_NAMED_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', copy: '©', reg: '®', hellip: '…', mdash: '—', ndash: '–', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', laquo: '«', raquo: '»', trade: '™', deg: '°', plusmn: '±', times: '×', divide: '÷', frac12: '½', frac14: '¼', frac34: '¾', sup2: '²', sup3: '³' };
+function qaDecodeEntities(str) {
+  return String(str || '')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => { const c = parseInt(h, 16); return (Number.isFinite(c) && c >= 0 && c <= 0x10FFFF) ? String.fromCodePoint(c) : ''; })
+    .replace(/&#(\d+);/g, (_, d) => { const c = parseInt(d, 10); return (Number.isFinite(c) && c >= 0 && c <= 0x10FFFF) ? String.fromCodePoint(c) : ''; })
+    .replace(/&([a-zA-Z][a-zA-Z0-9]*);/g, (_, n) => (QA_NAMED_ENTITIES[n] !== undefined ? QA_NAMED_ENTITIES[n] : ''));
+}
+// FASE 42: varian padanan glosarium dengan imbuhan Indonesia — prefiks
+// (me-/mem-/men-/meng-/meny-/di-/ter-/ber-/pe-/per-/ke-/se-/peN-),
+// sufiks (-kan/-an/-i/-nya/-ku/-mu/-lah/-kah dan kombinasinya), termasuk
+// asimilasi nasal: huruf awal k/p/t/s luruh sesudah prefiks nasal
+// ("kembali" -> "mengembalikan", "simpan" -> "menyimpan"). Varian
+// dihitung sekali per entri (disimpan di g.variants) supaya qaCheck per
+// pasangan tetap cepat. Frasa multi-kata tidak divariasikan — tetap dicek
+// substring seperti dulu.
+const QA_GLOSS_PREFIXES = ['meng', 'meny', 'men', 'mem', 'peng', 'peny', 'pen', 'pem', 'ber', 'ter', 'per', 'me', 'pe', 'di', 'ke', 'se'];
+const QA_GLOSS_SUFFIXES = ['', 'kan', 'an', 'i', 'nya', 'ku', 'mu', 'lah', 'kah', 'kannya', 'kanku', 'kanmu', 'kanlah', 'kankah', 'annya', 'anku', 'anmu', 'inya', 'iku', 'imu'];
+function qaGlossaryVariants(expected) {
+  const e = String(expected || '').toLowerCase();
+  const out = new Set([e]);
+  if (!e || /\s/.test(e)) return out;
+  const dropped = (e[0] === 'k' || e[0] === 'p' || e[0] === 't' || e[0] === 's') ? e.slice(1) : null;
+  const stems = dropped ? [e, dropped] : [e];
+  for (const pre of [''].concat(QA_GLOSS_PREFIXES)) {
+    for (const suf of QA_GLOSS_SUFFIXES) {
+      for (const st of stems) {
+        // Bentuk luruh hanya sah sesudah prefiks nasal (meN-/peN-).
+        if (st === dropped && (pre === '' || !/^(meng|meny|men|mem|peng|peny|pen|pem|me)$/.test(pre))) continue;
+        out.add(pre + st + suf);
+      }
+    }
+  }
+  return out;
+}
+function qaGlossaryExpectedFound(targetLower, targetWords, g) {
+  const e = String((g && g.expected) || '').toLowerCase();
+  if (!e) return true;
+  if (/\s/.test(e)) return targetLower.includes(e);
+  if (!g.variants) g.variants = qaGlossaryVariants(e);
+  for (const v of g.variants) if (targetWords.has(v)) return true;
+  return false;
+}
 function qaTokenList(s, re) { return (String(s).match(re) || []); }
 function qaMultisetDiff(a, b) {
   const count = (arr) => { const m = new Map(); for (const x of arr) m.set(x, (m.get(x) || 0) + 1); return m; };
@@ -2840,8 +2891,10 @@ function qaCheck(source, target, opts) {
   // 5. Angka berubah. Angka dibandingkan tanpa pemisah ribuan/desimal
   // ('1.000' vs '1,000' dianggap sama — penulisan lokal beda, nilainya sama).
   // Angka yang menempel kata (MP3, v2) diabaikan — \b tidak cocok di sana.
+  // FASE 42: entity di-decode dulu sebelum angka diekstrak — digit di
+  // dalam entity (&#39; -> "39") bukan angka sungguhan.
   const normNum = (x) => x.replace(/[.,]/g, '');
-  const numDiff = qaMultisetDiff(qaTokenList(s, QA_NUM_RE).map(normNum), qaTokenList(t, QA_NUM_RE).map(normNum));
+  const numDiff = qaMultisetDiff(qaTokenList(qaDecodeEntities(s), QA_NUM_RE).map(normNum), qaTokenList(qaDecodeEntities(t), QA_NUM_RE).map(normNum));
   if (numDiff.missing.length || numDiff.extra.length) {
     const detail = (numDiff.missing.length ? 'Hilang: ' + numDiff.missing.join(', ') : '') + (numDiff.missing.length && numDiff.extra.length ? '; ' : '') + (numDiff.extra.length ? 'Berlebih: ' + numDiff.extra.join(', ') : '');
     issues.push({ code: 'numbers', severity: numDiff.missing.length ? 'error' : 'warning', detail });
@@ -2859,7 +2912,8 @@ function qaCheck(source, target, opts) {
   // 8. Kata berulang di target (yang tidak ada di sumber).
   const repT = [...t.matchAll(QA_REPEAT_RE)].map((m) => m[1].toLowerCase());
   const repS = new Set([...s.matchAll(QA_REPEAT_RE)].map((m) => m[1].toLowerCase()));
-  const repNew = [...new Set(repT)].filter((w) => !repS.has(w));
+  // FASE 42: kata fungsi (stopword) diabaikan — wajar berulang.
+  const repNew = [...new Set(repT)].filter((w) => !repS.has(w) && !QA_REPEAT_STOPWORDS_ID.has(w));
   if (repNew.length) issues.push({ code: 'repeated-word', severity: 'warning', detail: 'Kata berulang: "' + repNew.slice(0, 3).join('", "') + '".' });
   // 9. Glosarium tidak konsisten — istilah di sumber yang padanannya tidak
   // muncul di target. Hanya istilah yang ada di sumber yang dicek.
@@ -2868,10 +2922,13 @@ function qaCheck(source, target, opts) {
   const gloss = (o.glossary || []);
   const glossBad = [];
   const sLower = s.toLowerCase(), tLower = t.toLowerCase();
+  const tWords = new Set(tLower.match(/[\p{L}]+/gu) || []);
   for (const g of gloss) {
     if (sLower.indexOf(g.term) === -1) continue;
     if (!g.re.test(s)) continue;
-    if (!tLower.includes(g.expected.toLowerCase())) glossBad.push('"' + g.term + '" → "' + g.expected + '"');
+    // FASE 42: pencocokan peka imbuhan (qaGlossaryExpectedFound) — mis.
+    // "mengembalikannya" lolos untuk padanan "Kembali".
+    if (!qaGlossaryExpectedFound(tLower, tWords, g)) glossBad.push('"' + g.term + '" → "' + g.expected + '"');
     if (glossBad.length >= 3) break;
   }
   if (glossBad.length) issues.push({ code: 'glossary', severity: 'warning', detail: 'Istilah tidak sesuai glosarium: ' + glossBad.join('; ') + '.' });
@@ -3042,12 +3099,20 @@ function repairMissingVars(source, target) {
 // Daftar istilah glosarium untuk cek QA no. 9: gabungan kamus bawaan GT +
 // kamus kustom pengguna. Istilah yang padanannya sama dengan aslinya
 // (mis. 'armor' -> 'Armor') dilewati — tidak bisa dicek.
+// FASE 42: istilah yang tidak ditegakkan di cek QA karena polisemi —
+// 'back' di glosarium bawaan berarti tombol "Back" di UI, tapi di narasi
+// berarti "belakang" ("standing back" -> "di belakang") atau hilang dalam
+// imbuhan ("hands it back" -> "mengembalikannya"). Hanya daftar CEK QA
+// (qaGlossaryList) yang dikecualikan di sini; GT.glossary yang dipakai
+// glossaryGet saat menerjemahkan TIDAK diubah.
+const QA_GLOSSARY_SKIP_QA = new Set(['back']);
 function qaGlossaryList() {
   const out = [];
   const add = (obj) => {
     if (!obj) return;
     for (const [term, expected] of Object.entries(obj)) {
       if (!term || !expected || expected.toLowerCase() === term.toLowerCase()) continue;
+      if (QA_GLOSSARY_SKIP_QA.has(term.toLowerCase())) continue;
       out.push({ term, expected, re: new RegExp('\\b' + escapeRegExp(term) + '\\b', 'i') });
     }
   };
@@ -5658,7 +5723,7 @@ window.GTGabungan = {
   checkDeadLinks, checkStoryEntities, checkStoryName,
   repairMissingVars, missingVarOccurrences,
   unitKey, twScope, fileScope, rowContextLabel, dedupeRows, rowsFromStrings, parseTextList,
-  levenshtein, similarity, qaCheck, qaGlossaryList, qaSummaryForFile, splitCacheKey, collectTmxPairs, tmxBuild, buildQaReportMd, QA_CODE_LABELS,
+  levenshtein, similarity, qaCheck, qaGlossaryList, qaSummaryForFile, qaDecodeEntities, qaGlossaryVariants, splitCacheKey, collectTmxPairs, tmxBuild, buildQaReportMd, QA_CODE_LABELS,
   translateFileContent, checkTranslated, repairFile, compiledHint, kindLabel,
   renpyMd5, renpyLexerDecode, renpyPyDecode, renpyEncodeSayString, renpyStringQuote,
   renpyEscapeBadPercent, renpySayGetCode, renpyBlockDigest, renpyComputeIdentifier,
