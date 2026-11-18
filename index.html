@@ -286,9 +286,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Untuk game Ren'Py (.rpy): setelah diterjemahkan, klik <b>Download tl/id/ (Ren'Py)</b> — hasilnya folder <b>game/tl/id/</b> (format asli Ren'Py, file asli tidak diubah). Salin folder itu ke folder <b>game/</b> di game Ren'Py kamu, lalu pilih bahasa di Preferences &gt; Language.</li>
       <li>Untuk game Ren'Py (.rpy): mau terjemah di Poedit? Klik <b>Buat .po (Ren'Py)</b> — hasilnya file <b>renpy-id.po</b> berisi semua dialog dan teks UI. Terjemahkan di Poedit (atau upload lagi ke web app), lalu klik <b>Download tl/id/ (Ren'Py)</b> untuk memakai terjemahannya.</li>
       <li>Untuk game Godot (source .gd/.tscn/.tres): klik <b>Buat .po (Godot)</b> — hasilnya file <b>id.po</b> berisi semua teks dari <b>tr()</b> dan properti text di scene (msgstr masih kosong). Terjemahkan file .po itu (upload lagi ke web app, atau pakai Poedit), lalu daftarkan di Godot: Project Settings &gt; Localization &gt; Translations.</li>
-      <li>Terjemahan berjalan <b>paralel (3 batch sekaligus)</b> supaya daftar besar lebih cepat — matikan lewat checkbox "Terjemahan paralel" di Pengaturan Lanjutan kalau Google mulai menolak (429). Macro Twine yang hanya mencetak teks (print, button, link, dialog, <b>&lt;&lt;= ...&gt;&gt;</b>) ikut diterjemahkan; macro kode (set, if, widget, dll.) dilewati.</li>
+      <li>Terjemahan berjalan <b>paralel (3 batch sekaligus)</b> supaya daftar besar lebih cepat — matikan lewat checkbox "Terjemahan paralel" di Pengaturan Lanjutan kalau Google mulai menolak (429). Macro Twine yang hanya mencetak teks (print, button, link, dialog, <b>&lt;&lt;= ...&gt;&gt;</b>) ikut diterjemahkan; macro kode (set, if, widget, dll.) dilewati. Blok verbatim <b>{{{ ... }}}</b> (biasanya CSS/JS/contoh kode) dan passage <b>StoryInit</b> tidak pernah diterjemahkan.</li>
       <li>Punya API key sendiri (Groq, OpenRouter, DeepSeek, dll.)? Aktifkan <b>provider custom</b> di Pengaturan Lanjutan — isi alamat API, key, dan nama model, lalu klik "Uji Provider". Provider custom dipakai pertama sebelum mesin gratis; key hanya tersimpan di browser ini.</li>
       <li>Kalau hasil terjemahan kehilangan variabel (mis. {gold}, %s, [item]), web app <b>memperbaikinya otomatis</b>: hanya bagian kalimatnya yang diterjemahkan ulang, variabel aslinya disambung kembali (ala Fallowborn). Kalau Google gagal membaca satu batch, dicoba lagi dengan format marker sebelum pindah ke mesin lain.</li>
+      <li>Penjaga anti-halusinasi (FASE 31): kalau mesin mengembalikan string sampah yang sama untuk banyak teks berbeda, atau class CSS diterjemahkan, hasilnya <b>ditolak dan tidak disimpan</b> — teksnya ditandai gagal supaya bisa diulang lewat mesin lain, bukan merusak game.</li>
     </ol>
     <p class="hint">Mesin terjemahan: provider custom (kalau diaktifkan) → kamus bawaan (istilah game umum, offline) → Google Translate → endpoint Chrome → Microsoft Edge → penerjemah bawaan Chrome (PC, offline setelah model terunduh) → MyMemory. Teks yang sudah diterjemahkan tersimpan otomatis di cache browser (4000 terjemahan terakhir) — kalau proses dihentikan (tombol Batal), klik "Terjemahkan Daftar" lagi nanti dan teks yang sudah selesai langsung terisi dari cache, hanya sisanya yang diterjemahkan. Untuk daftar lebih besar dari 4000 teks, klik "Simpan Proyek" (.json) supaya tidak hilang kalau halaman di-refresh. Kode game (script, style, nama variable) tidak disentuh. Teks di dalam gambar/canvas tidak bisa diterjemahkan.</p>
   </section>
@@ -598,6 +599,9 @@ function extractQuotedRanges(code) {
    (Padanan isCodePassage di jalur terjemah, tapi untuk string mentah,
    supaya scan & Daftar Teks tidak menghitung passage kode.) */
 function isCodeTags(attrs) {
+  // FASE 32: passage StoryInit (khusus SugarCube — isinya kode/konfigurasi
+  // yang tidak pernah ditampilkan) juga dikecualikan dari scan/terjemah.
+  if (/\b(name|tiddler)\s*=\s*["']StoryInit["']/i.test(attrs || '')) return true;
   const m = /tags\s*=\s*["']([^"']*)["']/i.exec(attrs || '');
   if (!m) return false;
   const tags = m[1].split(/\s+/);
@@ -626,9 +630,15 @@ function extractFromHTML(text) {
     .replace(/<tw-passagedata([^>]*)>([\s\S]*?)<\/tw-passagedata>/gi, (m, attrs) => isCodeTags(attrs) ? ' ' : m)
     .replace(/<div([^>]*\btiddler="[^"]*"[^>]*)>([\s\S]*?)<\/div>/gi, (m, attrs) => isCodeTags(attrs) ? ' ' : m)
     .replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<!--[\s\S]*?-->/g, ' ');
+  // FASE 32: buang blok verbatim {{{...}}} dari sumber teks biasa — isinya
+  // kode/contoh (CSS/JS), bukan teks pemain; tanpa ini baris-baris CSS di
+  // dalam blok bocor lewat pemecahan baris di bawah (jalur ini tidak memakai
+  // twineSegments). splitVerbatim ada di top-level, sama seperti yang
+  // dipakai twineSegments.
+  const cleanedNoVerbatim = splitVerbatim(cleaned).filter((c) => !c.verbatim).map((c) => c.text).join('');
   const re4 = /\b(title|alt|placeholder|aria-label)="([^"]+)"/gi;
-  while ((m = re4.exec(cleaned))) if (looksTranslatable(m[2])) out.push(m[2]);
-  cleaned.replace(/<[^>]+>/g, '\n').split('\n').forEach((line) => {
+  while ((m = re4.exec(cleanedNoVerbatim))) if (looksTranslatable(m[2])) out.push(m[2]);
+  cleanedNoVerbatim.replace(/<[^>]+>/g, '\n').split('\n').forEach((line) => {
     line.split(/(?:\s{2,})/).forEach((part) => {
       const t = trimEdgeNbsp(part.trim()).replace(/\s+/g, ' ');
       // Baris yang mengandung macro Twine utuh (<<...>>) sudah ditangani
@@ -638,6 +648,10 @@ function extractFromHTML(text) {
       const hasMacroOpen = t.includes('<<') || t.includes('&lt;&lt;');
       const hasMacroClose = t.includes('>>') || t.includes('&gt;&gt;');
       if (hasMacroOpen && hasMacroClose) return;
+      // FASE 32: baris berisi tautan Twine [[...]] juga sudah ditangani jalur
+      // passage (pushTwineSegments) — jangan tambahkan lagi sebagai satu entri
+      // mentah (mis. "[[Continue->Next Passage]]" utuh).
+      if (t.includes('[[')) return;
       if (looksTranslatable(t)) out.push(t);
     });
   });
@@ -839,15 +853,37 @@ function splitMacroToken(tok, parts) {
 // Sama seperti twineSegments di dalam GT (dipakai jalur terjemah) —
 // disalin ke top-level supaya jalur SCAN juga bisa memecah passage Twine
 // menjadi segmen teks (bukan kode). Macro (<<...>>), link ([[...]]),
-// tag HTML, komentar (/* */) dan markup @@...@@ ditandai tidak bisa
-// diterjemahkan; hanya teks di antaranya yang diambil. Pengecualian
+// tag HTML, komentar (/* */), markup @@...@@ dan blok verbatim {{{...}}}
+// (FASE 32) ditandai tidak bisa diterjemahkan; hanya teks di antaranya
+// yang diambil. Pengecualian
 // (FASE 16B): label tampil macro button/link/dialog/print/notify ikut
 // diambil — nama passage dan selector CSS tetap tidak diterjemahkan.
+// FASE 32: pisahkan blok verbatim SugarCube {{{ ... }}} (sering berisi CSS/JS/
+// konfigurasi) sebelum tokenisasi — isi blok diperlakukan sebagai satu token
+// yang tidak diterjemahkan. Depth-counting supaya {{{ bersarang tetap aman;
+// blok tanpa penutup dianggap sampai akhir teks (lebih aman daripada menerjemahkan kode).
+function splitVerbatim(text) {
+  const out = [];
+  let i = 0; const n = text.length;
+  while (i < n) {
+    const open = text.indexOf('{{{', i);
+    if (open < 0) { out.push({ verbatim: false, text: text.slice(i) }); break; }
+    if (open > i) out.push({ verbatim: false, text: text.slice(i, open) });
+    let depth = 1, j = open + 3;
+    while (j < n && depth > 0) {
+      if (text.startsWith('{{{', j)) { depth++; j += 3; }
+      else if (text.startsWith('}}}', j)) { depth--; j += 3; }
+      else j++;
+    }
+    out.push({ verbatim: true, text: text.slice(open, j) });
+    i = j;
+  }
+  return out;
+}
 function twineSegments(text) {
   const parts = [];
   const re = /\[\[.*?\]\]|<<.*?>>|<[^>]+>|@@.*?@@|\/%.*?%\/|\/\*.*?\*\//gs;
   const escRe = /\\[nt]/g;
-  let last = 0, m;
   const pushPlain = (s) => {
     if (!s) return;
     // Pisahkan spasi di awal/akhir tiap potongan teks biasa jadi segmen
@@ -876,22 +912,44 @@ function twineSegments(text) {
     }
     if (eLast < s.length) pushText(s.slice(eLast));
   };
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) pushPlain(text.slice(last, m.index));
-    const tok = m[0];
-    if (tok.startsWith('[[')) {
-      const inner = tok.slice(2, -2);
-      const pipe = inner.indexOf('|');
-      if (pipe >= 0) {
-        parts.push({ text: '[[', translatable: false });
-        pushPlain(inner.slice(0, pipe));
-        parts.push({ text: '|' + inner.slice(pipe + 1) + ']]', translatable: false });
-      } else parts.push({ text: tok, translatable: false });
-    } else if (tok.startsWith('<<')) splitMacroToken(tok, parts);
-    else parts.push({ text: tok, translatable: false });
-    last = m.index + tok.length;
+  // FASE 32: tokenisasi lama hanya jalan pada potongan teks biasa;
+  // blok verbatim masuk utuh sebagai satu segmen non-terjemahan.
+  const segmentPlain = (str) => {
+    let last = 0, m;
+    re.lastIndex = 0;
+    while ((m = re.exec(str)) !== null) {
+      if (m.index > last) pushPlain(str.slice(last, m.index));
+      const tok = m[0];
+      if (tok.startsWith('[[')) {
+        const inner = tok.slice(2, -2);
+        const pipe = inner.indexOf('|');
+        const arrow = inner.indexOf('->');
+        const backArrow = inner.indexOf('<-');
+        if (pipe >= 0) {
+          parts.push({ text: '[[', translatable: false });
+          pushPlain(inner.slice(0, pipe));
+          parts.push({ text: '|' + inner.slice(pipe + 1) + ']]', translatable: false });
+        } else if (arrow >= 0) {
+          // FASE 32: [[label->target]] — label diterjemahkan, target utuh.
+          parts.push({ text: '[[', translatable: false });
+          pushPlain(inner.slice(0, arrow));
+          parts.push({ text: '->' + inner.slice(arrow + 2) + ']]', translatable: false });
+        } else if (backArrow >= 0) {
+          // FASE 32: [[target<-label]] — label (sesudah <-) diterjemahkan.
+          parts.push({ text: '[[' + inner.slice(0, backArrow) + '<-', translatable: false });
+          pushPlain(inner.slice(backArrow + 2));
+          parts.push({ text: ']]', translatable: false });
+        } else parts.push({ text: tok, translatable: false });
+      } else if (tok.startsWith('<<')) splitMacroToken(tok, parts);
+      else parts.push({ text: tok, translatable: false });
+      last = m.index + tok.length;
+    }
+    if (last < str.length) pushPlain(str.slice(last));
+  };
+  for (const chunk of splitVerbatim(text)) {
+    if (chunk.verbatim) parts.push({ text: chunk.text, translatable: false });
+    else segmentPlain(chunk.text);
   }
-  if (last < text.length) pushPlain(text.slice(last));
   return parts;
 }
 
@@ -1095,11 +1153,32 @@ const GT = (() => {
     };
   }
   const hasLetters = (s) => /[A-Za-z]/.test(s);
+  // FASE 32: pisahkan blok verbatim SugarCube {{{ ... }}} (sering berisi CSS/JS/
+  // konfigurasi) sebelum tokenisasi — isi blok diperlakukan sebagai satu token
+  // yang tidak diterjemahkan. Depth-counting supaya {{{ bersarang tetap aman;
+  // blok tanpa penutup dianggap sampai akhir teks (lebih aman daripada menerjemahkan kode).
+  function splitVerbatim(text) {
+    const out = [];
+    let i = 0; const n = text.length;
+    while (i < n) {
+      const open = text.indexOf('{{{', i);
+      if (open < 0) { out.push({ verbatim: false, text: text.slice(i) }); break; }
+      if (open > i) out.push({ verbatim: false, text: text.slice(i, open) });
+      let depth = 1, j = open + 3;
+      while (j < n && depth > 0) {
+        if (text.startsWith('{{{', j)) { depth++; j += 3; }
+        else if (text.startsWith('}}}', j)) { depth--; j += 3; }
+        else j++;
+      }
+      out.push({ verbatim: true, text: text.slice(open, j) });
+      i = j;
+    }
+    return out;
+  }
   function twineSegments(text) {
     const parts = [];
     const re = /\[\[.*?\]\]|<<.*?>>|<[^>]+>|@@.*?@@|\/%.*?%\/|\/\*.*?\*\//gs;
     const escRe = /\\[nt]/g;
-    let last = 0, m;
     const pushPlain = (s) => {
       if (!s) return;
       // Pisahkan spasi di awal/akhir tiap potongan teks biasa jadi segmen
@@ -1128,22 +1207,44 @@ const GT = (() => {
       }
       if (eLast < s.length) pushText(s.slice(eLast));
     };
-    while ((m = re.exec(text)) !== null) {
-      if (m.index > last) pushPlain(text.slice(last, m.index));
-      const tok = m[0];
-      if (tok.startsWith('[[')) {
-        const inner = tok.slice(2, -2);
-        const pipe = inner.indexOf('|');
-        if (pipe >= 0) {
-          parts.push({ text: '[[', translatable: false });
-          pushPlain(inner.slice(0, pipe));
-          parts.push({ text: '|' + inner.slice(pipe + 1) + ']]', translatable: false });
-        } else parts.push({ text: tok, translatable: false });
-      } else if (tok.startsWith('<<')) splitMacroToken(tok, parts);
-      else parts.push({ text: tok, translatable: false });
-      last = m.index + tok.length;
+    // FASE 32: tokenisasi lama hanya jalan pada potongan teks biasa;
+    // blok verbatim masuk utuh sebagai satu segmen non-terjemahan.
+    const segmentPlain = (str) => {
+      let last = 0, m;
+      re.lastIndex = 0;
+      while ((m = re.exec(str)) !== null) {
+        if (m.index > last) pushPlain(str.slice(last, m.index));
+        const tok = m[0];
+        if (tok.startsWith('[[')) {
+          const inner = tok.slice(2, -2);
+          const pipe = inner.indexOf('|');
+          const arrow = inner.indexOf('->');
+          const backArrow = inner.indexOf('<-');
+          if (pipe >= 0) {
+            parts.push({ text: '[[', translatable: false });
+            pushPlain(inner.slice(0, pipe));
+            parts.push({ text: '|' + inner.slice(pipe + 1) + ']]', translatable: false });
+          } else if (arrow >= 0) {
+            // FASE 32: [[label->target]] — label diterjemahkan, target utuh.
+            parts.push({ text: '[[', translatable: false });
+            pushPlain(inner.slice(0, arrow));
+            parts.push({ text: '->' + inner.slice(arrow + 2) + ']]', translatable: false });
+          } else if (backArrow >= 0) {
+            // FASE 32: [[target<-label]] — label (sesudah <-) diterjemahkan.
+            parts.push({ text: '[[' + inner.slice(0, backArrow) + '<-', translatable: false });
+            pushPlain(inner.slice(backArrow + 2));
+            parts.push({ text: ']]', translatable: false });
+          } else parts.push({ text: tok, translatable: false });
+        } else if (tok.startsWith('<<')) splitMacroToken(tok, parts);
+        else parts.push({ text: tok, translatable: false });
+        last = m.index + tok.length;
+      }
+      if (last < str.length) pushPlain(str.slice(last));
+    };
+    for (const chunk of splitVerbatim(text)) {
+      if (chunk.verbatim) parts.push({ text: chunk.text, translatable: false });
+      else segmentPlain(chunk.text);
     }
-    if (last < text.length) pushPlain(text.slice(last));
     return parts;
   }
   function isSkipped(el) {
@@ -1161,6 +1262,8 @@ const GT = (() => {
     if (!el || !el.closest) return false;
     const p = el.closest('[tiddler], tw-passagedata');
     if (!p) return false;
+    // FASE 32: StoryInit tidak pernah ditampilkan — jangan diterjemahkan.
+    if (p.getAttribute('name') === 'StoryInit' || p.getAttribute('tiddler') === 'StoryInit') return true;
     const tags = (p.getAttribute('tags') || '').split(/\s+/);
     return tags.includes('widget') || tags.includes('stylesheet') || tags.includes('script');
   }
@@ -1416,11 +1519,92 @@ const GT = (() => {
     return out;
   }
 
+  // FASE 31: Penjaga anti-halusinasi (2026-11-18). Pola nyata Wasteland +
+  // Groq: Llama mengembalikan string sampah yang SAMA —
+  // "8197e9010ff5cd59d89a62790d9829cf,en_id_2023q1.md" — untuk 26 teks
+  // berbeda (7 class CSS + 19 teks prosa). Hasil yang ditolak TIDAK
+  // disimpan ke cache dan ditandai gagal, jadi aman dicoba ulang lewat
+  // mesin lain / "Ulangi yang gagal". Kegagalan di sini aman: teks
+  // dibiarkan Inggris, bukan diganti sampah.
+  // Aturan (konservatif — ragu = tolak, karena yang ditolak bisa diulang):
+  //  1. Hash/nama-file: ada rangkaian heks >=16 karakter, atau berakhiran
+  //     .md/.txt/.json dengan rangkaian heks >=8 di dalamnya.
+  //  2. Keluaran sama untuk >=3 teks sumber berbeda dalam satu proses
+  //     (model collapse) — 2 teks boleh berbagi terjemahan ("Yes"/"Yeah"
+  //     -> "Ya"), 3+ teks berbeda dengan satu keluaran yang sama hampir
+  //     pasti halusinasi.
+  //  3. Class CSS: sumber berupa daftar class (token huruf kecil/angka/
+  //     strip, ada digit atau prefix utility) harus kembali apa adanya;
+  //     kalau mesin "menerjemahkannya", tolak.
+  function isCssClassList(s) {
+    const t = (s || '').trim();
+    if (!t || /\n/.test(t)) return false;
+    const toks = t.split(/\s+/);
+    if (toks.length < 2) return false;
+    if (!toks.every((x) => /^[a-z][a-z0-9-]*$/.test(x))) return false;
+    return toks.some((x) => /\d/.test(x) || /^(opacity|cursor|pointer-events|flex|grid|hidden|block|inline|absolute|relative|bg|text|border|rounded|shadow|w|h|p|m|gap|justify|items|overflow|z)-/.test(x));
+  }
+  function isHallucinatedOutput(out, srcText) {
+    if (!out || typeof out !== 'string') return false;
+    const o = out.trim();
+    if (!o) return false;
+    // 1. Hash / nama file.
+    if (/[0-9a-f]{16,}/i.test(o)) return true;
+    if (/\.(md|txt|json|csv)$/i.test(o) && /[0-9a-f]{8,}/i.test(o)) return true;
+    if (/^[0-9a-f]{8,}([,;_][^\s]*)?$/i.test(o)) return true;
+    // 3. Class CSS harus kembali utuh.
+    if (srcText && isCssClassList(srcText) && o !== srcText.trim()) return true;
+    return false;
+  }
+
   async function translateTexts(texts, src, tgt, opts) {
     const onProgress = (opts && opts.onProgress) || (() => {});
     const onStatus = (opts && opts.onStatus) || (() => {});
     const cancelled = (opts && opts.cancelled) || { value: false };
     const result = new Map();
+    // FASE 31: jejak keluaran per proses untuk aturan 2 (collapse lintas batch).
+    const guardSeen = new Map(); // kunci keluaran -> { sources: Set, keys: Set }
+    let guardRejected = 0;
+    // Satu teks: true kalau lolos. Menolak = tandai gagal + buang dari cache.
+    function guardCheckOne(t, clean) {
+      if (isHallucinatedOutput(clean, t)) { guardRejected++; return false; }
+      const key = clean.trim().toLowerCase();
+      if (key.length < 8) return true;
+      let rec = guardSeen.get(key);
+      if (!rec) { rec = { sources: new Set(), keys: new Set() }; guardSeen.set(key, rec); }
+      rec.sources.add(t);
+      rec.keys.add(cacheKey(src, tgt, t));
+      if (rec.sources.size >= 3) {
+        // Racun lintas batch: tolak yang ini, dan cabut yang sudah tercache
+        // + yang sudah masuk result dari batch sebelumnya.
+        guardRejected++;
+        for (const k of rec.keys) cache.delete(k);
+        for (const s of rec.sources) result.set(s, { translated: s, fromCache: false, failed: true });
+        return false;
+      }
+      return true;
+    }
+    // Satu batch: kembalikan Set index yang ditolak (aturan 1+3 per teks,
+    // aturan 2 dalam batch + lintas batch via guardCheckOne).
+    function guardValidateBatch(batch, out) {
+      const rejected = new Set();
+      const counts = new Map(); // kunci keluaran -> [index]
+      batch.forEach((t, i) => {
+        if (!out[i]) return;
+        const clean = normalizeSpaces(out[i], t);
+        if (isHallucinatedOutput(clean, t)) { rejected.add(i); guardRejected++; return; }
+        const key = clean.trim().toLowerCase();
+        if (key.length >= 8) { if (!counts.has(key)) counts.set(key, []); counts.get(key).push(i); }
+      });
+      for (const idxs of counts.values()) {
+        if (new Set(idxs.map((i) => batch[i])).size >= 3) idxs.forEach((i) => { if (!rejected.has(i)) guardRejected++; rejected.add(i); });
+      }
+      batch.forEach((t, i) => {
+        if (!out[i] || rejected.has(i)) return;
+        if (!guardCheckOne(t, normalizeSpaces(out[i], t))) rejected.add(i);
+      });
+      return rejected;
+    }
     const todo = [];
     for (const t of texts) {
       const k = cacheKey(src, tgt, t);
@@ -1556,10 +1740,15 @@ const GT = (() => {
         if (!out) { edgeStreak++; if (edgeStreak >= 3) edgeDown = true; }
       }
       if (!out) { stillTodo.push(...batch); return BATCH_DELAY; }
+      // FASE 31: tolak hasil halusinasi SEBELUM disimpan ke cache. Yang
+      // ditolak masuk stillTodo supaya dicoba lagi lewat penerjemah bawaan
+      // Chrome / MyMemory di akhir proses (kesempatan kedua otomatis);
+      // done baru dihitung di sana supaya progress tidak dobel.
+      const rejected = guardValidateBatch(batch, out);
       batch.forEach((t, i) => {
-        if (out[i]) { const clean = normalizeSpaces(out[i], t); result.set(t, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKey(src, tgt, t), clean); }
-        else result.set(t, { translated: t, fromCache: false, failed: true });
-        done++;
+        if (out[i] && !rejected.has(i)) { const clean = normalizeSpaces(out[i], t); result.set(t, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKey(src, tgt, t), clean); done++; }
+        else if (rejected.has(i)) { result.set(t, { translated: t, fromCache: false, failed: true }); stillTodo.push(t); }
+        else { result.set(t, { translated: t, fromCache: false, failed: true }); done++; }
       });
       onProgress(done, texts.length, engine);
       saveCache();
@@ -1587,7 +1776,7 @@ const GT = (() => {
         const out = await builtinBatch(stillTodo, src, tgt, onStatus, onProgress, texts.length - stillTodo.length, texts.length, cancelled);
         if (out) {
           stillTodo.forEach((t, i) => {
-            if (out[i]) { const clean = normalizeSpaces(out[i], t); result.set(t, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKey(src, tgt, t), clean); }
+            if (out[i]) { const clean = normalizeSpaces(out[i], t); if (guardCheckOne(t, clean)) { result.set(t, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKey(src, tgt, t), clean); } else result.set(t, { translated: t, fromCache: false, failed: true }); }
             else result.set(t, { translated: t, fromCache: false, failed: true });
           });
           saveCache();
@@ -1603,8 +1792,8 @@ const GT = (() => {
         try {
           const tr = await mymemoryOne(t, src, tgt);
           const clean = normalizeSpaces(tr, t);
-          result.set(t, { translated: clean, fromCache: false, failed: false });
-          cache.set(cacheKey(src, tgt, t), clean);
+          if (guardCheckOne(t, clean)) { result.set(t, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKey(src, tgt, t), clean); }
+          else result.set(t, { translated: t, fromCache: false, failed: true });
         } catch (e) { result.set(t, { translated: t, fromCache: false, failed: true }); }
         done++;
         onProgress(done, texts.length, 'mymemory');
@@ -1637,6 +1826,9 @@ const GT = (() => {
       }
       if (needRepair.length) saveCache();
     }
+    // FASE 31: laporkan hasil yang ditolak supaya pengguna tahu kenapa ada
+    // yang gagal dan bisa mengulanginya (tidak disimpan = aman diulang).
+    if (guardRejected > 0) onStatus('🛡 FASE 31: ' + guardRejected + ' hasil ditolak sebagai halusinasi — tidak disimpan, silakan "Ulangi yang gagal" untuk mencoba mesin lain');
     return result;
   }
   function applyTranslations(items, result) {
@@ -1755,7 +1947,7 @@ const GT = (() => {
 
     return { html: serializeDoc(doc), stats: { totalItems: items.length, uniqueTexts: uniqTexts.length, translated: applyInfo.applied + titleApplied, fromCache: applyInfo.cached + titleCached, failed: failedTexts.length, failedTexts }, failedTexts, result };
   }
-  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, customBatch, setCustomProvider, parseCustomResponse, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, saveCache, cacheCap: CACHE_CAP, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel };
+  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, customBatch, setCustomProvider, parseCustomResponse, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, saveCache, cacheCap: CACHE_CAP, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel, isHallucinatedOutput, isCssClassList };
 })();
 window.GT = GT;
 
@@ -1981,7 +2173,8 @@ function checkTranslated(fileRec) {
     // Game HTML biasa tidak memakai penanda itu, jadi selisih jumlahnya bukan masalah.
     const isTwine = /<tw-storydata|<tw-passagedata|<div[^>]+tiddler="/i.test(orig);
     if (isTwine) {
-      const pairs = [['<<', 'macro buka'], ['>>', 'macro tutup'], ['[[', 'link buka'], [']]', 'link tutup']];
+      // FASE 32: jumlah blok verbatim harus sama sebelum/sesudah terjemah.
+      const pairs = [['<<', 'macro buka'], ['>>', 'macro tutup'], ['[[', 'link buka'], [']]', 'link tutup'], ['{{{', 'blok {{{ buka'], ['}}}', 'blok }}} tutup']];
       for (const [tok, label] of pairs) {
         if (countOf(orig, tok) !== countOf(tr, tok)) issues.push(label + ': asli ' + countOf(orig, tok) + ' vs hasil ' + countOf(tr, tok));
       }
