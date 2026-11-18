@@ -280,13 +280,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <ol class="howto">
       <li>Pilih file ZIP/APK, folder, atau banyak file game, lalu klik <b>Periksa Sekarang</b>.</li>
       <li>Centang file yang mau diterjemahkan, lalu klik <b>Terjemahkan yang dipilih</b> atau <b>Terjemahkan Semua</b>. Tunggu sampai selesai (file besar butuh waktu; butuh internet karena terjemahan lewat Google).</li>
-      <li>Untuk daftar besar, pakai <b>Daftar Teks</b>: pilih file, klik "Tampilkan Daftar Teks", lalu "Terjemahkan Daftar". Kalau sudah selesai, klik <b>Timpa File Asli</b> — file langsung jadi tanpa internet (hanya memakai terjemahan dari daftar), lalu unduh lewat <b>Download ZIP terjemahan</b>. Kalau daftar lebih besar dari 4000 teks, klik "Simpan Proyek" supaya terjemahan tidak hilang saat halaman di-refresh.</li>
+      <li>Untuk daftar besar, pakai <b>Daftar Teks</b>: pilih file, klik "Tampilkan Daftar Teks", lalu "Terjemahkan Daftar". Kalau sudah selesai, klik <b>Timpa File Asli</b> — file langsung jadi tanpa internet (hanya memakai terjemahan dari daftar), lalu unduh lewat <b>Download ZIP terjemahan</b>. Kalau daftar lebih besar dari 4000 teks, klik "Simpan Proyek" supaya terjemahan tidak hilang saat halaman di-refresh. Setiap baris menampilkan konteksnya (📍 nama passage + kalimat sebelum/sesudah) — teks yang sama di dua passage bisa diterjemahkan berbeda, dan pencarian juga mencocokkan nama passage.</li>
       <li>Klik <b>Cek Hasil</b> untuk memeriksa macro, link, dan tag masih utuh. Kalau ada yang rusak, klik <b>Perbaiki</b>.</li>
       <li>Klik <b>Download ZIP terjemahan</b>, lalu ekstrak dan mainkan seperti biasa.</li>
       <li>Untuk game Ren'Py (.rpy): setelah diterjemahkan, klik <b>Download tl/id/ (Ren'Py)</b> — hasilnya folder <b>game/tl/id/</b> (format asli Ren'Py, file asli tidak diubah). Salin folder itu ke folder <b>game/</b> di game Ren'Py kamu, lalu pilih bahasa di Preferences &gt; Language.</li>
       <li>Untuk game Ren'Py (.rpy): mau terjemah di Poedit? Klik <b>Buat .po (Ren'Py)</b> — hasilnya file <b>renpy-id.po</b> berisi semua dialog dan teks UI. Terjemahkan di Poedit (atau upload lagi ke web app), lalu klik <b>Download tl/id/ (Ren'Py)</b> untuk memakai terjemahannya.</li>
       <li>Untuk game Godot (source .gd/.tscn/.tres): klik <b>Buat .po (Godot)</b> — hasilnya file <b>id.po</b> berisi semua teks dari <b>tr()</b> dan properti text di scene (msgstr masih kosong). Terjemahkan file .po itu (upload lagi ke web app, atau pakai Poedit), lalu daftarkan di Godot: Project Settings &gt; Localization &gt; Translations.</li>
-      <li>Terjemahan berjalan <b>paralel (3 batch sekaligus)</b> supaya daftar besar lebih cepat — matikan lewat checkbox "Terjemahan paralel" di Pengaturan Lanjutan kalau Google mulai menolak (429). Macro Twine yang hanya mencetak teks (print, button, link, dialog, <b>&lt;&lt;= ...&gt;&gt;</b>) ikut diterjemahkan; macro kode (set, if, widget, dll.) dilewati. Blok verbatim <b>{{{ ... }}}</b> (biasanya CSS/JS/contoh kode) dan passage <b>StoryInit</b> tidak pernah diterjemahkan.</li>
+      <li>Terjemahan berjalan <b>paralel (3 batch sekaligus)</b> supaya daftar besar lebih cepat — matikan lewat checkbox "Terjemahan paralel" di Pengaturan Lanjutan kalau Google mulai menolak (429). Macro Twine yang hanya mencetak teks (print, button, link, dialog, <b>&lt;&lt;= ...&gt;&gt;</b>, &lt;&lt;- ...&gt;&gt;, linkappend, option) ikut diterjemahkan; macro kode (set, if, widget, dll.) dilewati. Isi <b>&lt;&lt;script&gt;&gt;</b> dan <b>&lt;&lt;silent&gt;&gt;</b> (kode, bukan teks tampil) juga dilewati. Blok verbatim <b>{{{ ... }}}</b> (biasanya CSS/JS/contoh kode) dan passage <b>StoryInit</b> tidak pernah diterjemahkan.</li>
       <li>Punya API key sendiri (Groq, OpenRouter, DeepSeek, dll.)? Aktifkan <b>provider custom</b> di Pengaturan Lanjutan — isi alamat API, key, dan nama model, lalu klik "Uji Provider". Provider custom dipakai pertama sebelum mesin gratis; key hanya tersimpan di browser ini.</li>
       <li>Kalau hasil terjemahan kehilangan variabel (mis. {gold}, %s, [item]), web app <b>memperbaikinya otomatis</b>: hanya bagian kalimatnya yang diterjemahkan ulang, variabel aslinya disambung kembali (ala Fallowborn). Kalau Google gagal membaca satu batch, dicoba lagi dengan format marker sebelum pindah ke mesin lain.</li>
       <li>Penjaga anti-halusinasi (FASE 31): kalau mesin mengembalikan string sampah yang sama untuk banyak teks berbeda, atau class CSS diterjemahkan, hasilnya <b>ditolak dan tidak disimpan</b> — teksnya ditandai gagal supaya bisa diulang lewat mesin lain, bukan merusak game.</li>
@@ -447,6 +447,50 @@ function dedupeKeepOrder(arr) {
   const seen = new Set(), out = [];
   for (const s of arr) { const k = s.trim(); if (k && !seen.has(k)) { seen.add(k); out.push(k); } }
   return out;
+}
+/* FASE 36 — Kunci unit terjemahan per konteks. Satu teks yang sama bisa
+   butuh terjemahan berbeda di passage/file berbeda (mis. "Good morning"
+   sebagai sapaan vs perpisahan), jadi unit terjemahan bukan lagi teksnya
+   saja, melainkan (konteks, teks). scope null = global (perilaku lama,
+   dipakai entri cache/proyek lama dan teks tanpa konteks).
+   - twScope(namaPassage): konteks satu passage Twine ('tw:Start').
+   - fileScope(path): konteks satu file ('file:index.html').
+   unitKey dipakai sebagai kunci Map hasil translateTexts: tanpa scope
+   hasilnya sama dengan teksnya sendiri, jadi pemanggil lama yang memakai
+   res.get(teks) tetap jalan. */
+function unitKey(scope, text) { return scope ? scope + '\n' + text : text; }
+function twScope(passage) { return 'tw:' + passage; }
+function fileScope(path) { return 'file:' + path; }
+// Nama passage dari atribut tag pembuka (<tw-passagedata name="..."> atau
+// <div tiddler="...">). null kalau tidak ada nama.
+function passageNameFromAttrs(attrs) {
+  const m = /(?:name|tiddler)\s*=\s*"([^"]+)"/.exec(attrs || '');
+  return m ? m[1] : null;
+}
+// Label konteks untuk satu baris Daftar Teks (.txt memakai scope mentahnya,
+// label ini hanya untuk tampilan): '📍 Start' / '📍 index.html · baris 42'.
+function rowContextLabel(row) {
+  if (!row || !row.scope) return '';
+  if (row.scope.indexOf('tw:') === 0) return '📍 ' + row.scope.slice(3);
+  if (row.scope.indexOf('file:') === 0) {
+    const base = row.scope.slice(5).split('/').pop();
+    return '📍 ' + base + (row.line ? ' · baris ' + row.line : '');
+  }
+  return '📍 ' + row.scope;
+}
+// Potongan kalimat sekitar (prev/next) untuk label konteks, dipangkas tengah.
+function ctxSnippet(s, n) {
+  if (!s) return '';
+  const t = s.replace(/\s+/g, ' ');
+  if (t.length <= n) return t;
+  return '…' + t.slice(-(n - 1));
+}
+// Potongan awal kalimat berikutnya (kepalanya yang menempel teks ini).
+function ctxHead(s, n) {
+  if (!s) return '';
+  const t = s.replace(/\s+/g, ' ');
+  if (t.length <= n) return t;
+  return t.slice(0, n - 1) + '…';
 }
 function detectLang(strings) {
   const text = ' ' + strings.join(' ').toLowerCase() + ' ';
@@ -646,12 +690,25 @@ function isEngineScriptAttrs(attrs) {
   const m = /\bid\s*=\s*["']([^"']+)["']/i.exec(attrs || '');
   return m ? isEngineScriptId(m[1]) : false;
 }
-function extractFromHTML(text) {
-  const out = []; let m;
+/* FASE 36 — extractFromHTMLData mengembalikan { strings, rows }.
+   strings = daftar teks unik seperti dulu (tidak berubah isinya, supaya
+   semua konsumen lama — count lama, ekspor .po/tl/, sampel — tetap jalan).
+   rows = satu baris per (teks, konteks): teks yang sama di dua passage
+   jadi DUA baris dengan scope 'tw:NamaPassage' masing-masing; teks di
+   luar passage (meta/atribut/teks biasa/script) berscope 'file:<nama>'.
+   Jalur baris-baris biasa (plain-text) dijalankan DUA kali: sekali pada
+   teks lengkap untuk `strings` (perilaku lama dipertahankan persis —
+   baris passage ikut terhitung di sana lalu didedup), sekali pada teks
+   dengan isi passage dikosongkan untuk `rows` (supaya baris passage
+   tidak mendapat kembaran file-scope yang menyesatkan). */
+function extractFromHTMLData(text, fileName) {
+  const out = []; const rows = []; let m;
+  const fScope = fileName ? fileScope(fileName) : null;
+  const addRow = (t, scope) => rows.push({ text: t, scope: scope || null, prev: null, next: null, line: null });
   const re1 = /<tw-passagedata([^>]*)>([\s\S]*?)<\/tw-passagedata>/gi;
-  while ((m = re1.exec(text))) { if (isCodeTags(m[1])) continue; pushTwineSegments(m[2], out); }
+  while ((m = re1.exec(text))) { if (isCodeTags(m[1])) continue; const nm = passageNameFromAttrs(m[1]); pushTwineSegments(m[2], out, rows, nm ? twScope(nm) : fScope); }
   const re2 = /<div([^>]*\btiddler="[^"]*"[^>]*)>([\s\S]*?)<\/div>/gi;
-  while ((m = re2.exec(text))) { if (isCodeTags(m[1])) continue; pushTwineSegments(m[2], out); }
+  while ((m = re2.exec(text))) { if (isCodeTags(m[1])) continue; const nm = passageNameFromAttrs(m[1]); pushTwineSegments(m[2], out, rows, nm ? twScope(nm) : fScope); }
   const re3 = /<meta[^>]*>/gi;
   while ((m = re3.exec(text))) {
     const tag = m[0];
@@ -660,7 +717,7 @@ function extractFromHTML(text) {
     // twitter:description) — meta lain bukan teks pemain, jadi jangan dihitung.
     if (!/\b(name|property)\s*=\s*["'](description|og:title|og:description|twitter:title|twitter:description)["']/i.test(tag)) continue;
     const cm = /content\s*=\s*["']([^"']+)["']/i.exec(tag);
-    if (cm && looksTranslatable(cm[1])) out.push(cm[1]);
+    if (cm && looksTranslatable(cm[1])) { out.push(cm[1]); addRow(cm[1], fScope); }
   }
   const cleaned = text
     // Buang isi passage kode (widget/stylesheet/script) dari sumber teks,
@@ -676,30 +733,43 @@ function extractFromHTML(text) {
   // dipakai twineSegments.
   const cleanedNoVerbatim = splitVerbatim(cleaned).filter((c) => !c.verbatim).map((c) => c.text).join('');
   const re4 = /\b(title|alt|placeholder|aria-label)="([^"]+)"/gi;
-  while ((m = re4.exec(cleanedNoVerbatim))) if (looksTranslatable(m[2])) out.push(m[2]);
-  cleanedNoVerbatim.replace(/<[^>]+>/g, '\n').split('\n').forEach((line) => {
-    line.split(/(?:\s{2,})/).forEach((part) => {
-      const t = trimEdgeNbsp(part.trim()).replace(/\s+/g, ' ');
-      // Baris yang mengandung macro Twine utuh (<<...>>) sudah ditangani
-      // jalur passage (pushTwineSegments) — jangan tambahkan lagi sebagai
-      // satu entri (akan jadi baris campur teks + kode, mis. selector #status).
-      // Perhatikan: di sumber mentah ini macro masih ter-encode (&lt;&lt;).
-      const hasMacroOpen = t.includes('<<') || t.includes('&lt;&lt;');
-      const hasMacroClose = t.includes('>>') || t.includes('&gt;&gt;');
-      if (hasMacroOpen && hasMacroClose) return;
-      // FASE 32: baris berisi tautan Twine [[...]] juga sudah ditangani jalur
-      // passage (pushTwineSegments) — jangan tambahkan lagi sebagai satu entri
-      // mentah (mis. "[[Continue->Next Passage]]" utuh).
-      if (t.includes('[[')) return;
-      // FASE 34: baris berisi @@...@@ juga sudah ditangani jalur passage
-      // (twineSegments memisah gaya dari isi) — jangan tambahkan lagi
-      // sebagai satu entri mentah (mis. "@@font-size:xx-large;Judul@@").
-      if (t.includes('@@')) return;
-      if (looksTranslatable(t)) out.push(t);
+  while ((m = re4.exec(cleanedNoVerbatim))) if (looksTranslatable(m[2])) { out.push(m[2]); addRow(m[2], fScope); }
+  // Pemecah baris teks biasa (dipakai dua kali — lihat komentar FASE 36 di atas).
+  const eachPlainLine = (src, cb) => {
+    src.replace(/<[^>]+>/g, '\n').split('\n').forEach((line) => {
+      line.split(/(?:\s{2,})/).forEach((part) => {
+        const t = trimEdgeNbsp(part.trim()).replace(/\s+/g, ' ');
+        // Baris yang mengandung macro Twine utuh (<<...>>) sudah ditangani
+        // jalur passage (pushTwineSegments) — jangan tambahkan lagi sebagai
+        // satu entri (akan jadi baris campur teks + kode, mis. selector #status).
+        // Perhatikan: di sumber mentah ini macro masih ter-encode (&lt;&lt;).
+        const hasMacroOpen = t.includes('<<') || t.includes('&lt;&lt;');
+        const hasMacroClose = t.includes('>>') || t.includes('&gt;&gt;');
+        if (hasMacroOpen && hasMacroClose) return;
+        // FASE 32: baris berisi tautan Twine [[...]] juga sudah ditangani jalur
+        // passage (pushTwineSegments) — jangan tambahkan lagi sebagai satu entri
+        // mentah (mis. "[[Continue->Next Passage]]" utuh).
+        if (t.includes('[[')) return;
+        // FASE 34: baris berisi @@...@@ juga sudah ditangani jalur passage
+        // (twineSegments memisah gaya dari isi) — jangan tambahkan lagi
+        // sebagai satu entri mentah (mis. "@@font-size:xx-large;Judul@@").
+        if (t.includes('@@')) return;
+        if (looksTranslatable(t)) cb(t);
+      });
     });
-  });
-  return dedupeKeepOrder(out);
+  };
+  eachPlainLine(cleanedNoVerbatim, (t) => out.push(t));
+  // Untuk baris konteks: kosongkan SEMUA isi passage (cerita + kode) supaya
+  // hanya teks yang benar-benar di luar passage yang mendapat baris file-scope.
+  const cleanedNoPassages = splitVerbatim(cleaned
+    .replace(/<tw-passagedata([^>]*)>([\s\S]*?)<\/tw-passagedata>/gi, ' ')
+    .replace(/<div([^>]*\btiddler="[^"]*"[^>]*)>([\s\S]*?)<\/div>/gi, ' ')
+  ).filter((c) => !c.verbatim).map((c) => c.text).join('');
+  eachPlainLine(cleanedNoPassages, (t) => addRow(t, fScope));
+  return { strings: dedupeKeepOrder(out), rows: dedupeRows(rows) };
 }
+// Pembungkus kompatibel: pemanggil lama hanya butuh daftar stringnya.
+function extractFromHTML(text) { return extractFromHTMLData(text).strings; }
 function walkJSON(val, out) {
   if (typeof val === 'string') { if (looksTranslatable(val)) out.push(val.trim().replace(/\s+/g, ' ')); return; }
   if (Array.isArray(val)) { val.forEach((v) => walkJSON(v, out)); return; }
@@ -775,12 +845,31 @@ function extractFromText(text) {
   });
   return dedupeKeepOrder(out);
 }
+/* FASE 36 — Baris konteks untuk file non-HTML (dan cadangan HTML): satu
+   baris per (teks, file). Nomor baris diisi bila murah (string ber-quotes
+   di JS/GD/TSCN/RPY — posisinya diketahui dari extractQuotedRanges);
+   kalau tidak ada, cukup nama file. */
+function rowsFromStrings(strings, fileName, content, ext) {
+  const scope = fileScope(fileName);
+  let lineOf = null;
+  if (['js', 'mjs', 'gd', 'tscn', 'tres', 'rpy'].indexOf(ext) >= 0) {
+    lineOf = new Map();
+    for (const r of extractQuotedRanges(content)) {
+      const t = r.text.trim().replace(/\s+/g, ' ');
+      if (!lineOf.has(t)) lineOf.set(t, content.slice(0, r.start).split('\n').length);
+    }
+  }
+  return strings.map((t) => ({ text: t, scope, prev: null, next: null, line: lineOf ? (lineOf.get(t) || null) : null }));
+}
 function analyzeFile(name, content) {
   const ext = extOf(name);
   let strings = [];
+  let stringRows = [];
   let skippedEngineStrings = 0; // FASE 34: string mesin yang dilewati
   if (ext === 'html' || ext === 'htm') {
-    strings = extractFromHTML(content);
+    const htmlData = extractFromHTMLData(content, name);
+    strings = htmlData.strings;
+    stringRows = htmlData.rows;
     // Pindai string JS hanya di dalam <script> inline, bukan di seluruh HTML:
     // pemindai JS mengira '/' di tag penutup HTML (mis. </title>) sebagai awal
     // regex, lalu kehilangan string sesudahnya.
@@ -799,20 +888,33 @@ function analyzeFile(name, content) {
       }
       scripts.push(m[2]);
     }
-    if (scripts.length) extractStringLiterals(scripts.join('\n')).forEach((s) => { if (!strings.includes(s)) strings.push(s); });
+    if (scripts.length) {
+      // FASE 36: string script mendapat baris file-scope sendiri (teks yang
+      // sama di passage dan di script adalah dua kemunculan berbeda).
+      const fScope = fileScope(name);
+      const rowKeys = new Set(stringRows.map((r) => unitKey(r.scope, r.text)));
+      extractStringLiterals(scripts.join('\n')).forEach((s) => {
+        if (!strings.includes(s)) strings.push(s);
+        const k = unitKey(fScope, s);
+        if (!rowKeys.has(k)) { rowKeys.add(k); stringRows.push({ text: s, scope: fScope, prev: null, next: null, line: null }); }
+      });
+    }
     skippedEngineStrings = skippedEngine.size;
   }
-  else if (ext === 'js' || ext === 'mjs' || ext === 'gd' || ext === 'tscn' || ext === 'tres') strings = extractStringLiterals(content);
-  else if (ext === 'json') strings = extractFromJSON(content);
-  else if (ext === 'rpy') strings = extractFromRpy(content);
-  else if (ext === 'po') strings = extractFromPo(content);
-  else if (ext === 'csv') strings = extractFromCsv(content);
-  else if (ext === 'xml') strings = extractFromXml(content);
-  else if (ext === 'txt' || ext === 'md') strings = extractFromText(content);
-  else if (ext === 'css') { const re = /content\s*:\s*["']([^"']+)["']/gi; let m; while ((m = re.exec(content))) if (looksTranslatable(m[1])) strings.push(m[1]); strings = dedupeKeepOrder(strings); }
-  else strings = extractStringLiterals(content);
+  else if (ext === 'js' || ext === 'mjs' || ext === 'gd' || ext === 'tscn' || ext === 'tres') { strings = extractStringLiterals(content); stringRows = rowsFromStrings(strings, name, content, ext); }
+  else if (ext === 'json') { strings = extractFromJSON(content); stringRows = rowsFromStrings(strings, name, content, ext); }
+  else if (ext === 'rpy') { strings = extractFromRpy(content); stringRows = rowsFromStrings(strings, name, content, ext); }
+  else if (ext === 'po') { strings = extractFromPo(content); stringRows = rowsFromStrings(strings, name, content, ext); }
+  else if (ext === 'csv') { strings = extractFromCsv(content); stringRows = rowsFromStrings(strings, name, content, ext); }
+  else if (ext === 'xml') { strings = extractFromXml(content); stringRows = rowsFromStrings(strings, name, content, ext); }
+  else if (ext === 'txt' || ext === 'md') { strings = extractFromText(content); stringRows = rowsFromStrings(strings, name, content, ext); }
+  else if (ext === 'css') { const re = /content\s*:\s*["']([^"']+)["']/gi; let m; while ((m = re.exec(content))) if (looksTranslatable(m[1])) strings.push(m[1]); strings = dedupeKeepOrder(strings); stringRows = rowsFromStrings(strings, name, content, ext); }
+  else { strings = extractStringLiterals(content); stringRows = rowsFromStrings(strings, name, content, ext); }
   const chars = strings.reduce((a, s) => a + s.length, 0);
-  return { name, ext, kind: kindLabel(name), count: strings.length, chars, lang: strings.length ? detectLang(strings) : '-', samples: strings.slice(0, 8), isLangFile: isLangFile(name), strings, skippedEngineStrings };
+  // FASE 36: count = jumlah BARIS konteks (teks yang sama di passage
+  // berbeda dihitung terpisah). strings tetap unik per teks (dipakai
+  // ekspor .po/tl/ dan konsumen lama lainnya).
+  return { name, ext, kind: kindLabel(name), count: stringRows.length, chars, lang: strings.length ? detectLang(strings) : '-', samples: strings.slice(0, 8), isLangFile: isLangFile(name), strings, stringRows, skippedEngineStrings };
 }
 /* Memeriksa apakah variabel (%s, %d, {gold}, [item]) di teks asli
    masih ada di teks terjemahan. Mengembalikan array variabel yang HILANG. */
@@ -849,6 +951,11 @@ function getMissingVars(orig, trans) {
 // sekaligus nama passage — menerjemahkannya akan merusak link.
 // dialog: hanya argumen pertama (judul). print/notify: semua argumen.
 // append/prepend/replace: tidak ada (argumennya selector CSS).
+// FASE 35: linkappend/linkprepend/linkreplace: hanya argumen pertama
+// (teks link; sesudahnya opsi class/id/disabled). option (anak
+// cycle/listbox): seperti button/link — argumen pertama hanya kalau ada
+// argumen kedua (satu argumen = label sekaligus nilai yang disimpan).
+// '-' sama seperti print/'=' (print.js SugarCube mendaftarkan ketiganya).
 // FASE 25: klasifikasi macro berbahaya vs aman (ala OctopusBridge —
 // hanya macro yang MENCETAK teks yang boleh masuk Daftar Teks; macro kode
 // dilewati seluruhnya). SAFE (mencetak teks tampil): print, notify, button,
@@ -857,15 +964,23 @@ function getMissingVars(orig, trans) {
 // switch, case, default, widget, for, foreach, break, continue, return,
 // include, display, silently, capture, append, prepend, replace (selector
 // CSS), dan semua macro lain yang tidak dikenal.
+// FASE 35 (audit macro vs SugarCube 2 asli): SAFE bertambah linkappend,
+// linkprepend, linkreplace, option, '-'. textbox/textarea SENGAJA tidak
+// ditambah: argumen ke-2 (nilai default) memang tampil, tapi nilainya juga
+// disimpan ke variabel — menerjemahkannya bisa merusak perbandingan kode.
+// notify/dialog bukan macro inti SugarCube (warisan GameGlot) tapi
+// dibiarkan (tidak berbahaya).
 function isDangerousMacro(macroName) {
   const name = (macroName || '').toLowerCase();
-  return ['print', 'notify', 'button', 'link', 'dialog', '='].indexOf(name) < 0;
+  return ['print', 'notify', 'button', 'link', 'dialog', '=', '-', 'linkappend', 'linkprepend', 'linkreplace', 'option'].indexOf(name) < 0;
 }
 function macroQuoteTranslatable(macroName, qIdx, qCount) {
   const name = (macroName || '').toLowerCase();
   if (name === 'button' || name === 'link') return qCount >= 2 && qIdx === 0;
   if (name === 'dialog') return qIdx === 0;
-  if (name === 'print' || name === 'notify' || name === '=') return true;
+  if (name === 'print' || name === 'notify' || name === '=' || name === '-') return true;
+  if (name === 'linkappend' || name === 'linkprepend' || name === 'linkreplace') return qIdx === 0;
+  if (name === 'option') return qCount >= 2 && qIdx === 0;
   return false; // macro berbahaya: selector CSS / kode, bukan teks tampil
 }
 // Pecah satu token macro <<...>> menjadi bagian-bagian: argumen kutip yang
@@ -877,6 +992,7 @@ function splitMacroToken(tok, parts) {
   const mName = /^\s*([A-Za-z_][\w-]*)/.exec(body);
   let name = mName ? mName[1].toLowerCase() : '';
   if (!name && /^\s*=/.test(body)) name = '='; // macro cetak-ekspresi <<= ...>>
+  else if (!name && /^\s*-/.test(body)) name = '-'; // FASE 35: <<- ...>> = print
   if (isDangerousMacro(name)) { parts.push({ text: tok, translatable: false }); return; }
   const quotes = [];
   const qRe = /"([^"]*)"|'([^']*)'/g;
@@ -905,6 +1021,22 @@ function splitMacroToken(tok, parts) {
     pos = cEnd;
   }
   if (pos < tok.length) parts.push({ text: tok.slice(pos), translatable: false });
+}
+
+// FASE 35: body macro <<script>> (JavaScript murni — evalScript) dan
+// <<silent>>/<<silently>> (output dibuang) bukan teks tampil. Kembalikan
+// posisi akhir span (tag penutup ikut) bila tok adalah pembuka container
+// kode; -1 bila bukan. Tanpa penutup, sisa string dianggap kode.
+// Dipakai kedua salinan twineSegments (scan + terjemah) supaya tetap sinkron.
+// (Body <<widget>> SENGAJA tidak dilewati: isinya definisi macro yang saat
+// dipanggil mencetak teks — aturan macro biasa sudah menanganinya.)
+function codeContainerEnd(str, tok, fromIdx) {
+  const mName = /^\s*([A-Za-z_][\w-]*)/.exec(tok.slice(2, -2));
+  const name = mName ? mName[1].toLowerCase() : '';
+  if (name !== 'script' && name !== 'silent' && name !== 'silently') return -1;
+  const close = '<</' + name + '>>';
+  const ci = str.indexOf(close, fromIdx);
+  return ci < 0 ? str.length : ci + close.length;
 }
 
 // Sama seperti twineSegments di dalam GT (dipakai jalur terjemah) —
@@ -977,6 +1109,7 @@ function twineSegments(text) {
     while ((m = re.exec(str)) !== null) {
       if (m.index > last) pushPlain(str.slice(last, m.index));
       const tok = m[0];
+      let end = m.index + tok.length;
       if (tok.startsWith('[[')) {
         const inner = tok.slice(2, -2);
         const pipe = inner.indexOf('|');
@@ -997,7 +1130,15 @@ function twineSegments(text) {
           pushPlain(inner.slice(backArrow + 2));
           parts.push({ text: ']]', translatable: false });
         } else parts.push({ text: tok, translatable: false });
-      } else if (tok.startsWith('<<')) splitMacroToken(tok, parts);
+      } else if (tok.startsWith('<<')) {
+        // FASE 35: container kode — lewati body sampai tag penutup.
+        const codeEnd = codeContainerEnd(str, tok, re.lastIndex);
+        if (codeEnd >= 0) {
+          parts.push({ text: str.slice(m.index, codeEnd), translatable: false });
+          re.lastIndex = codeEnd;
+          end = codeEnd;
+        } else splitMacroToken(tok, parts);
+      }
       else if (tok.startsWith('@@')) {
         // FASE 34: @@gaya;isi@@ (SugarCube) — gaya CSS sebelum ';'
         // pertama tidak pernah diterjemahkan; isi diterjemahkan normal;
@@ -1021,7 +1162,7 @@ function twineSegments(text) {
         re.lastIndex = resume;
       }
       else parts.push({ text: tok, translatable: false });
-      last = m.index + tok.length;
+      last = end;
     }
     if (last < str.length) pushPlain(str.slice(last));
   };
@@ -1036,15 +1177,31 @@ function twineSegments(text) {
 // Dipakai di scan supaya Daftar Teks berisi teks pemain, bukan blok kode.
 // Segmen panjang (>300 karakter) yang sudah bersih dari macro/tag adalah
 // teks cerita, jadi tetap dimasukkan meski looksTranslatable membatasi 300.
-function pushTwineSegments(content, out) {
+// FASE 36: rows (opsional) menerima satu baris konteks per teks:
+// { text, scope, prev, next, line } — prev/next = teks sebelum/sesudahnya
+// di passage yang sama (untuk label konteks di Daftar Teks). scope =
+// 'tw:NamaPassage' untuk teks passage, 'file:...' / null untuk yang lain.
+// out (string) tetap diisi seperti dulu supaya pemanggil lama jalan.
+function pushTwineSegments(content, out, rows, scope) {
   const dec = decodeHTMLEntities(content);
+  const kept = [];
   for (const seg of twineSegments(dec.text)) {
     if (!seg.translatable) continue;
     const t = trimEdgeNbsp(seg.text.trim()).replace(/\s+/g, ' ');
     if (t.length < 2 || !/[A-Za-z\u00C0-\u024F]/.test(t)) continue;
     if (t.length <= 300 && !looksTranslatable(t)) continue;
-    out.push(t);
+    kept.push(t);
   }
+  for (let i = 0; i < kept.length; i++) {
+    out.push(kept[i]);
+    if (rows) rows.push({ text: kept[i], scope: scope || null, prev: i > 0 ? kept[i - 1] : null, next: i < kept.length - 1 ? kept[i + 1] : null, line: null });
+  }
+}
+// Dedup baris konteks berdasarkan (scope, teks), pertahankan urutan pertama.
+function dedupeRows(rows) {
+  const seen = new Set(), out = [];
+  for (const r of rows) { const k = unitKey(r.scope, r.text); if (!seen.has(k)) { seen.add(k); out.push(r); } }
+  return out;
 }
 
 /* Lindungi placeholder di dalam satu segmen teks: {tag}, [var], %s, \n, $var, entity HTML (&amp; &lt; &#123;), dan tag HTML (<span>) — hanya teks biasa diterjemahkan. */
@@ -1149,6 +1306,23 @@ const GT = (() => {
     }, 400);
   }
   const cacheKey = (s, t, text) => s + '|' + t + '|' + text;
+  // FASE 36 — Kunci cache per konteks. scope 'tw:Passage' untuk teks
+  // Twine, 'file:path' untuk teks file biasa, null = global (kunci lama).
+  // Entri lama (global) tetap dibaca sebagai cadangan: lookup mencoba
+  // kunci scope dulu, lalu global — proyek/cache lama Ilham tetap jalan.
+  const cacheKeyScoped = (s, t, scope, text) => scope ? s + '|' + t + '|' + scope + '|' + text : cacheKey(s, t, text);
+  // Urutan: scope persis -> scope ternormalisasi -> global persis ->
+  // global ternormalisasi (spasi ganda diciutkan, FASE 34). Kembalikan
+  // terjemahan atau null.
+  function cacheLookup(s, t, scope, text) {
+    const nk = text.trim().replace(/\s+/g, ' ');
+    const keys = [];
+    if (scope) { keys.push(cacheKeyScoped(s, t, scope, text)); if (nk !== text) keys.push(cacheKeyScoped(s, t, scope, nk)); }
+    keys.push(cacheKey(s, t, text));
+    if (nk !== text) keys.push(cacheKey(s, t, nk));
+    for (const k of keys) if (cache.has(k)) return cache.get(k);
+    return null;
+  }
   // Kamus bawaan Inggris -> Indonesia. Dicek dulu sebelum Google, jadi
   // istilah game yang umum tetap diterjemahkan walau Google diblokir, lambat,
   // atau kuotanya habis. Kunci ditulis huruf kecil; pencocokan mengabaikan
@@ -1294,6 +1468,7 @@ const GT = (() => {
       while ((m = re.exec(str)) !== null) {
         if (m.index > last) pushPlain(str.slice(last, m.index));
         const tok = m[0];
+        let end = m.index + tok.length;
         if (tok.startsWith('[[')) {
           const inner = tok.slice(2, -2);
           const pipe = inner.indexOf('|');
@@ -1314,7 +1489,15 @@ const GT = (() => {
             pushPlain(inner.slice(backArrow + 2));
             parts.push({ text: ']]', translatable: false });
           } else parts.push({ text: tok, translatable: false });
-        } else if (tok.startsWith('<<')) splitMacroToken(tok, parts);
+        } else if (tok.startsWith('<<')) {
+          // FASE 35: container kode — lewati body sampai tag penutup.
+          const codeEnd = codeContainerEnd(str, tok, re.lastIndex);
+          if (codeEnd >= 0) {
+            parts.push({ text: str.slice(m.index, codeEnd), translatable: false });
+            re.lastIndex = codeEnd;
+            end = codeEnd;
+          } else splitMacroToken(tok, parts);
+        }
         else if (tok.startsWith('@@')) {
           // FASE 34: @@gaya;isi@@ (SugarCube) — gaya CSS sebelum ';'
           // pertama tidak pernah diterjemahkan; isi diterjemahkan normal;
@@ -1338,7 +1521,7 @@ const GT = (() => {
           re.lastIndex = resume;
         }
         else parts.push({ text: tok, translatable: false });
-        last = m.index + tok.length;
+        last = end;
       }
       if (last < str.length) pushPlain(str.slice(last));
     };
@@ -1387,6 +1570,15 @@ const GT = (() => {
     while ((n = walker.nextNode())) {
       const parent = n.parentElement;
       const inTwine = twineOn && parent && parent.closest ? !!parent.closest('tw-passagedata, #store-area') : false;
+      // FASE 36: passage pemilik node ini (nama dari tw-passagedata /
+      // tiddler). Dipakai collectUnits/applyTranslations supaya teks yang
+      // sama di dua passage mendapat terjemahan masing-masing. null =
+      // teks di luar passage (scope file, dihitung translateFile).
+      let passage = null;
+      if (inTwine && parent && parent.closest) {
+        const pEl = parent.closest('tw-passagedata, [tiddler]');
+        if (pEl) passage = pEl.getAttribute('name') || pEl.getAttribute('tiddler') || null;
+      }
       // Teks yang mengandung tag HTML (mis. <span>WELCOME</span> dari &lt;span&gt; di
       // sumber) dipecah lewat protectSegments, supaya tag dilindungi dan hanya
       // teks di antaranya yang diterjemahkan. Decode dulu: kalau sumbernya
@@ -1406,7 +1598,7 @@ const GT = (() => {
       let segments = inTwine ? twineSegments(core) : protectSegments(core);
       if (lead) segments.unshift({ text: lead, translatable: false });
       if (trail) segments.push({ text: trail, translatable: false });
-      items.push({ kind: 'text', node: n, twine: inTwine, segments, depth: dec.depth });
+      items.push({ kind: 'text', node: n, twine: inTwine, segments, depth: dec.depth, passage });
     }
     for (const el of doc.querySelectorAll('*')) {
       if (isSkipped(el)) continue;
@@ -1424,21 +1616,30 @@ const GT = (() => {
     }
     return items;
   }
-  function collectUnits(items) {
+  // FASE 36: dedup per (teks, scope), bukan per teks. scope teks =
+  // 'tw:Passage' bila di dalam passage, fileScope (dari translateFile)
+  // bila di luar passage / atribut / judul. Tanpa fileScope, teks di
+  // luar passage berscope null (= global, perilaku lama).
+  function collectUnits(items, fileScopeArg) {
     const units = []; const seen = new Set();
     items.forEach((item, itemIndex) => {
+      const scope = item.kind === 'text'
+        ? (item.passage ? twScope(item.passage) : (fileScopeArg || null))
+        : (fileScopeArg || null);
       if (item.kind === 'text') {
         item.segments.forEach((seg, segIndex) => {
           if (!seg.translatable) return;
           if (!hasLetters(seg.text) || seg.text.trim().length < 2) return;
-          if (seen.has(seg.text)) return;
-          seen.add(seg.text);
-          units.push({ text: seg.text, itemIndex, segIndex });
+          const k = unitKey(scope, seg.text);
+          if (seen.has(k)) return;
+          seen.add(k);
+          units.push({ text: seg.text, itemIndex, segIndex, scope });
         });
       } else if (item.kind === 'attr' || item.kind === 'title') {
-        if (seen.has(item.original)) return;
-        seen.add(item.original);
-        units.push({ text: item.original, itemIndex, segIndex: -1 });
+        const k = unitKey(scope, item.original);
+        if (seen.has(k)) return;
+        seen.add(k);
+        units.push({ text: item.original, itemIndex, segIndex: -1, scope });
       }
     });
     return units;
@@ -1662,25 +1863,41 @@ const GT = (() => {
     const onProgress = (opts && opts.onProgress) || (() => {});
     const onStatus = (opts && opts.onStatus) || (() => {});
     const cancelled = (opts && opts.cancelled) || { value: false };
+    // FASE 36 — Unit terjemahan = (scope, teks). opts.scopes = array
+    // paralel dengan texts (scope null = global, perilaku lama). Teks yang
+    // sama di passage berbeda adalah unit berbeda: diterjemahkan, dicache,
+    // dan diterapkan masing-masing — tanpa ini terjemahan passage A bocor
+    // ke passage B. result dikunci unitKey(scope, teks); tanpa scope
+    // kuncinya = teksnya sendiri, jadi pemanggil lama (res.get(teks))
+    // tetap jalan.
+    const scopes = (opts && opts.scopes) || null;
+    const units = []; const unitIndex = new Map();
+    texts.forEach((t, i) => {
+      const scope = scopes ? (scopes[i] || null) : null;
+      const k = unitKey(scope, t);
+      if (!unitIndex.has(k)) { unitIndex.set(k, units.length); units.push({ text: t, scope, key: k }); }
+    });
     const result = new Map();
     // FASE 31: jejak keluaran per proses untuk aturan 2 (collapse lintas batch).
-    const guardSeen = new Map(); // kunci keluaran -> { sources: Set, keys: Set }
+    const guardSeen = new Map(); // kunci keluaran -> { sources: Set<teks>, units: Map<unitKey, unit> }
     let guardRejected = 0;
-    // Satu teks: true kalau lolos. Menolak = tandai gagal + buang dari cache.
-    function guardCheckOne(t, clean) {
-      if (isHallucinatedOutput(clean, t)) { guardRejected++; return false; }
+    // Satu unit: true kalau lolos. Menolak = tandai gagal + buang dari cache.
+    // FASE 36: collapse dihitung per teks sumber BERBEDA — teks yang sama
+    // di 2 passage tetap 1 sumber (bukan 2), jadi tidak kena tolak.
+    function guardCheckOne(u, clean) {
+      if (isHallucinatedOutput(clean, u.text)) { guardRejected++; return false; }
       const key = clean.trim().toLowerCase();
       if (key.length < 15) return true; // FASE 33: collapse hanya dicek untuk hasil >= 15 karakter
       let rec = guardSeen.get(key);
-      if (!rec) { rec = { sources: new Set(), keys: new Set() }; guardSeen.set(key, rec); }
-      rec.sources.add(t);
-      rec.keys.add(cacheKey(src, tgt, t));
+      if (!rec) { rec = { sources: new Set(), units: new Map() }; guardSeen.set(key, rec); }
+      rec.sources.add(u.text);
+      rec.units.set(u.key, u);
       if (rec.sources.size >= 3) {
         // Racun lintas batch: tolak yang ini, dan cabut yang sudah tercache
         // + yang sudah masuk result dari batch sebelumnya.
         guardRejected++;
-        for (const k of rec.keys) cache.delete(k);
-        for (const s of rec.sources) result.set(s, { translated: s, fromCache: false, failed: true });
+        for (const uu of rec.units.values()) cache.delete(cacheKeyScoped(src, tgt, uu.scope, uu.text));
+        for (const uu of rec.units.values()) result.set(uu.key, { translated: uu.text, fromCache: false, failed: true });
         return false;
       }
       return true;
@@ -1690,69 +1907,58 @@ const GT = (() => {
     function guardValidateBatch(batch, out) {
       const rejected = new Set();
       const counts = new Map(); // kunci keluaran -> [index]
-      batch.forEach((t, i) => {
+      batch.forEach((u, i) => {
         if (!out[i]) return;
-        const clean = normalizeSpaces(out[i], t);
-        if (isHallucinatedOutput(clean, t)) { rejected.add(i); guardRejected++; return; }
+        const clean = normalizeSpaces(out[i], u.text);
+        if (isHallucinatedOutput(clean, u.text)) { rejected.add(i); guardRejected++; return; }
         const key = clean.trim().toLowerCase();
         if (key.length >= 15) { if (!counts.has(key)) counts.set(key, []); counts.get(key).push(i); }
       });
       for (const idxs of counts.values()) {
-        if (new Set(idxs.map((i) => batch[i])).size >= 3) idxs.forEach((i) => { if (!rejected.has(i)) guardRejected++; rejected.add(i); });
+        if (new Set(idxs.map((i) => batch[i].text)).size >= 3) idxs.forEach((i) => { if (!rejected.has(i)) guardRejected++; rejected.add(i); });
       }
-      batch.forEach((t, i) => {
+      batch.forEach((u, i) => {
         if (!out[i] || rejected.has(i)) return;
-        if (!guardCheckOne(t, normalizeSpaces(out[i], t))) rejected.add(i);
+        if (!guardCheckOne(u, normalizeSpaces(out[i], u.text))) rejected.add(i);
       });
       return rejected;
     }
     const todo = [];
-    for (const t of texts) {
-      const k = cacheKey(src, tgt, t);
-      if (cache.has(k)) result.set(t, { translated: cache.get(k), fromCache: true, failed: false });
-      else {
-        // FASE 34: kunci cache dari Daftar Teks dinormalisasi (spasi
-        // ganda diciutkan + tepi di-trim saat scan), sementara segmen
-        // di file bisa berisi spasi ganda / spasi tepi ("Of course,"
-        // dua spasi, " in <<next>>") — coba juga kunci ternormalisasi
-        // supaya Timpa menemukannya. Hanya lookup; hasil tetap dikunci
-        // teks asli (t) supaya applyTranslations cocok.
-        const nk = t.trim().replace(/\s+/g, ' ');
-        if (nk !== t) {
-          const nkKey = cacheKey(src, tgt, nk);
-          if (cache.has(nkKey)) result.set(t, { translated: cache.get(nkKey), fromCache: true, failed: false });
-          else todo.push(t);
-        } else todo.push(t);
-      }
+    for (const u of units) {
+      // FASE 36: cacheLookup mencoba kunci scope dulu (termasuk varian
+      // ternormalisasi FASE 34), lalu kunci global lama.
+      const hit = cacheLookup(src, tgt, u.scope, u.text);
+      if (hit !== null) result.set(u.key, { translated: hit, fromCache: true, failed: false });
+      else todo.push(u);
     }
-    onProgress(texts.length - todo.length, texts.length, 'cache');
+    onProgress(units.length - todo.length, units.length, 'cache');
     if (todo.length === 0) return result;
     // 1. Cek Kamus Kustom (dari user) terlebih dahulu
     const rest = [];
-    for (const t of todo) {
-      const key = t.trim().replace(/\s+/g, ' ').toLowerCase();
+    for (const u of todo) {
+      const key = u.text.trim().replace(/\s+/g, ' ').toLowerCase();
       if (customGlossary[key]) {
         const g = customGlossary[key];
-        result.set(t, { translated: g, fromCache: false, failed: false, fromGlossary: true });
-        cache.set(cacheKey(src, tgt, t), g);
+        result.set(u.key, { translated: g, fromCache: false, failed: false, fromGlossary: true });
+        cache.set(cacheKeyScoped(src, tgt, u.scope, u.text), g);
       } else {
-        rest.push(t);
+        rest.push(u);
       }
     }
     todo.length = 0; todo.push(...rest);
-    onProgress(texts.length - todo.length, texts.length, 'custom-glossary');
+    onProgress(units.length - todo.length, units.length, 'custom-glossary');
     if (todo.length === 0) { saveCache(); return result; }
 
     // 2. Cek Kamus Bawaan (Wasteland Survivor dll) jika target adalah ID
     if (src === 'en' && tgt === 'id') {
       const rest2 = [];
-      for (const t of todo) {
-        const g = glossaryGet(t);
-        if (g) { result.set(t, { translated: g, fromCache: false, failed: false, fromGlossary: true }); cache.set(cacheKey(src, tgt, t), g); }
-        else rest2.push(t);
+      for (const u of todo) {
+        const g = glossaryGet(u.text);
+        if (g) { result.set(u.key, { translated: g, fromCache: false, failed: false, fromGlossary: true }); cache.set(cacheKeyScoped(src, tgt, u.scope, u.text), g); }
+        else rest2.push(u);
       }
       todo.length = 0; todo.push(...rest2);
-      onProgress(texts.length - todo.length, texts.length, 'glossary');
+      onProgress(units.length - todo.length, units.length, 'glossary');
       if (todo.length === 0) { saveCache(); return result; }
     }
     // FASE 28: mode cacheOnly — hanya cache + kamus, JANGAN panggil mesin
@@ -1760,7 +1966,7 @@ const GT = (() => {
     // diterjemahkan tanpa menerjemahkan ulang teks yang tidak ada di daftar
     // (teks itu tetap Inggris dan dihitung gagal, supaya status jujur).
     if (opts && opts.cacheOnly) {
-      for (const t of todo) result.set(t, { translated: t, fromCache: false, failed: true });
+      for (const u of todo) result.set(u.key, { translated: u.text, fromCache: false, failed: true });
       saveCache();
       return result;
     }
@@ -1772,14 +1978,16 @@ const GT = (() => {
     // dipakai sebagai cadangan (tidak kena batas, jalan offline).
     const batches = [];
     let cur = [], curLen = 0;
-    for (const t of todo) {
+    for (const u of todo) {
       // Jangan pecah teks tunggal yang panjang: kalau batch masih kosong,
       // teks >3000 karakter masuk utuh jadi satu batch sendiri.
-      if (cur.length > 0 && (cur.length >= MAX_Q || curLen + t.length > MAX_CHARS)) { batches.push(cur); cur = []; curLen = 0; }
-      cur.push(t); curLen += t.length + 1;
+      if (cur.length > 0 && (cur.length >= MAX_Q || curLen + u.text.length > MAX_CHARS)) { batches.push(cur); cur = []; curLen = 0; }
+      cur.push(u); curLen += u.text.length + 1;
     }
     if (cur.length) batches.push(cur);
-    let done = texts.length - todo.length;
+    let done = units.length - todo.length;
+    // Mesin terjemah menerima array string polos; unit dibawa paralel.
+    const batchTexts = (batch) => batch.map((u) => u.text);
     // Circuit breaker: mesin yang gagal 3 batch beruntun dianggap mati
     // dan dilewati untuk sisa proses — supaya tidak buang waktu retry
     // di setiap batch kalau mesinnya memang sedang diblokir (mis. 429).
@@ -1806,23 +2014,24 @@ const GT = (() => {
     let nextIdx = 0;
     async function runOneBatch(batch) {
       let out = null, engine = '';
+      const bTexts = batchTexts(batch);
       // FASE 30: provider custom (API key sendiri) dicoba PERTAMA kalau
       // diaktifkan dan pengaturannya lengkap — key milik pengguna, kuotanya
       // resmi, jadi tidak kena blokir 429 endpoint gratis. Gagal 3 batch
       // beruntun -> dianggap mati untuk sisa proses (circuit breaker sama
       // seperti Google/dict/Edge); key salah (401/403) tidak dicoba ulang.
       if (!customDown && customCfg.enabled && customCfg.apiKey && customCfg.baseUrl && customCfg.model) {
-        onProgress(done, texts.length, 'custom');
+        onProgress(done, units.length, 'custom');
         for (let attempt = 0; attempt < 2 && !out; attempt++) {
-          try { out = await customBatch(batch, src, tgt); engine = 'custom'; customStreak = 0; break; }
+          try { out = await customBatch(bTexts, src, tgt); engine = 'custom'; customStreak = 0; break; }
           catch (e) { if (!isRetryable(e)) break; await sleep(1000 * (attempt + 1)); }
         }
         if (!out) { customStreak++; if (customStreak >= 3) customDown = true; }
       }
       if (!googleDown) {
-        onProgress(done, texts.length, 'google'); // tunjukkan mesin yang sedang dicoba
+        onProgress(done, units.length, 'google'); // tunjukkan mesin yang sedang dicoba
         for (let attempt = 0; attempt < 3 && !out; attempt++) {
-          try { out = await googleBatch(batch, src, tgt); engine = 'google'; googleStreak = 0; break; }
+          try { out = await googleBatch(bTexts, src, tgt); engine = 'google'; googleStreak = 0; break; }
           catch (e) { if (!isRetryable(e)) break; await sleep(1000 * (attempt + 1)); }
         }
         // FASE 26 (Fallowborn): kalau multi-q mengembalikan semua null
@@ -1830,7 +2039,7 @@ const GT = (() => {
         // pindah ke dict. Kalau gagal juga, out jadi null dan lanjut ke dict.
         if (out && out.every((x) => !x)) {
           try {
-            const m = await googleBatchMarkers(batch, src, tgt);
+            const m = await googleBatchMarkers(bTexts, src, tgt);
             if (m && m.some((x) => x)) { out = m; engine = 'google'; googleStreak = 0; }
             else out = null;
           } catch (e) { out = null; }
@@ -1838,17 +2047,17 @@ const GT = (() => {
         if (!out) { googleStreak++; if (googleStreak >= 3) googleDown = true; }
       }
       if (!out && !dictDown) {
-        onProgress(done, texts.length, 'dict');
+        onProgress(done, units.length, 'dict');
         for (let attempt = 0; attempt < 2 && !out; attempt++) {
-          try { out = await googleDictBatch(batch, src, tgt); engine = 'google'; dictStreak = 0; break; }
+          try { out = await googleDictBatch(bTexts, src, tgt); engine = 'google'; dictStreak = 0; break; }
           catch (e) { if (!isRetryable(e)) break; await sleep(1200 * (attempt + 1)); }
         }
         if (!out) { dictStreak++; if (dictStreak >= 3) dictDown = true; }
       }
       if (!out && !edgeDown) {
-        onProgress(done, texts.length, 'edge');
+        onProgress(done, units.length, 'edge');
         for (let attempt = 0; attempt < 2 && !out; attempt++) {
-          try { out = await edgeBatch(batch, src, tgt); engine = 'edge'; edgeStreak = 0; break; }
+          try { out = await edgeBatch(bTexts, src, tgt); engine = 'edge'; edgeStreak = 0; break; }
           catch (e) { if (!isRetryable(e)) break; await sleep(1200 * (attempt + 1)); }
         }
         if (!out) { edgeStreak++; if (edgeStreak >= 3) edgeDown = true; }
@@ -1859,15 +2068,15 @@ const GT = (() => {
       // Chrome / MyMemory di akhir proses (kesempatan kedua otomatis);
       // done baru dihitung di sana supaya progress tidak dobel.
       const rejected = guardValidateBatch(batch, out);
-      batch.forEach((t, i) => {
-        if (out[i] && !rejected.has(i)) { const clean = normalizeSpaces(out[i], t); result.set(t, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKey(src, tgt, t), clean); done++; }
-        else if (rejected.has(i)) { result.set(t, { translated: t, fromCache: false, failed: true }); stillTodo.push(t); }
-        else { result.set(t, { translated: t, fromCache: false, failed: true }); done++; }
+      batch.forEach((u, i) => {
+        if (out[i] && !rejected.has(i)) { const clean = normalizeSpaces(out[i], u.text); result.set(u.key, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKeyScoped(src, tgt, u.scope, u.text), clean); done++; }
+        else if (rejected.has(i)) { result.set(u.key, { translated: u.text, fromCache: false, failed: true }); stillTodo.push(u); }
+        else { result.set(u.key, { translated: u.text, fromCache: false, failed: true }); done++; }
       });
-      onProgress(done, texts.length, engine);
+      onProgress(done, units.length, engine);
       saveCache();
       // Setelah batch berisi teks panjang, jeda lebih lama sebelum batch berikutnya.
-      return batch.some((t) => t.length > MAX_CHARS) ? LONG_TEXT_DELAY : BATCH_DELAY;
+      return batch.some((u) => u.text.length > MAX_CHARS) ? LONG_TEXT_DELAY : BATCH_DELAY;
     }
     async function worker() {
       let delay = 0;
@@ -1887,30 +2096,30 @@ const GT = (() => {
     // Sisa yang gagal di semua mesin online -> penerjemah bawaan Chrome.
     if (stillTodo.length && !cancelled.value && typeof Translator !== 'undefined') {
       try {
-        const out = await builtinBatch(stillTodo, src, tgt, onStatus, onProgress, texts.length - stillTodo.length, texts.length, cancelled);
+        const out = await builtinBatch(stillTodo.map((u) => u.text), src, tgt, onStatus, onProgress, units.length - stillTodo.length, units.length, cancelled);
         if (out) {
-          stillTodo.forEach((t, i) => {
-            if (out[i]) { const clean = normalizeSpaces(out[i], t); if (guardCheckOne(t, clean)) { result.set(t, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKey(src, tgt, t), clean); } else result.set(t, { translated: t, fromCache: false, failed: true }); }
-            else result.set(t, { translated: t, fromCache: false, failed: true });
+          stillTodo.forEach((u, i) => {
+            if (out[i]) { const clean = normalizeSpaces(out[i], u.text); if (guardCheckOne(u, clean)) { result.set(u.key, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKeyScoped(src, tgt, u.scope, u.text), clean); } else result.set(u.key, { translated: u.text, fromCache: false, failed: true }); }
+            else result.set(u.key, { translated: u.text, fromCache: false, failed: true });
           });
           saveCache();
-          onProgress(texts.length, texts.length, 'Chrome');
+          onProgress(units.length, units.length, 'Chrome');
           stillTodo.length = 0;
         }
       } catch (e) { /* jatuh ke MyMemory */ }
     }
     // Sisa terakhir -> MyMemory satu per satu.
     if (stillTodo.length && !cancelled.value) {
-      for (const t of stillTodo) {
+      for (const u of stillTodo) {
         if (cancelled.value) break;
         try {
-          const tr = await mymemoryOne(t, src, tgt);
-          const clean = normalizeSpaces(tr, t);
-          if (guardCheckOne(t, clean)) { result.set(t, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKey(src, tgt, t), clean); }
-          else result.set(t, { translated: t, fromCache: false, failed: true });
-        } catch (e) { result.set(t, { translated: t, fromCache: false, failed: true }); }
+          const tr = await mymemoryOne(u.text, src, tgt);
+          const clean = normalizeSpaces(tr, u.text);
+          if (guardCheckOne(u, clean)) { result.set(u.key, { translated: clean, fromCache: false, failed: false }); cache.set(cacheKeyScoped(src, tgt, u.scope, u.text), clean); }
+          else result.set(u.key, { translated: u.text, fromCache: false, failed: true });
+        } catch (e) { result.set(u.key, { translated: u.text, fromCache: false, failed: true }); }
         done++;
-        onProgress(done, texts.length, 'mymemory');
+        onProgress(done, units.length, 'mymemory');
         await sleep(200);
       }
       saveCache();
@@ -1925,16 +2134,17 @@ const GT = (() => {
     // supaya tidak rekursi (translateSegment -> translateTexts -> repair).
     if (!cancelled.value && (!opts || opts.allowSegmentRepair !== false)) {
       const needRepair = [];
-      for (const [t, r] of result) {
-        if (!r.failed && r.translated !== t && getMissingVars(t, r.translated).length > 0) needRepair.push(t);
+      for (const u of units) {
+        const r = result.get(u.key);
+        if (r && !r.failed && r.translated !== u.text && getMissingVars(u.text, r.translated).length > 0) needRepair.push(u);
       }
-      for (const t of needRepair) {
+      for (const u of needRepair) {
         if (cancelled.value) break;
         try {
-          const fixed = await translateSegment(t, src, tgt, (ts, s, g, o) => translateTexts(ts, s, g, Object.assign({}, o, { allowSegmentRepair: false, onProgress: () => {}, onStatus: () => {}, cancelled })));
-          if (getMissingVars(t, fixed.text).length === 0 && fixed.text !== t) {
-            result.set(t, { translated: fixed.text, fromCache: false, failed: false });
-            cache.set(cacheKey(src, tgt, t), fixed.text);
+          const fixed = await translateSegment(u.text, src, tgt, (ts, s, g, o) => translateTexts(ts, s, g, Object.assign({}, o, { allowSegmentRepair: false, onProgress: () => {}, onStatus: () => {}, cancelled })));
+          if (getMissingVars(u.text, fixed.text).length === 0 && fixed.text !== u.text) {
+            result.set(u.key, { translated: fixed.text, fromCache: false, failed: false });
+            cache.set(cacheKeyScoped(src, tgt, u.scope, u.text), fixed.text);
           }
         } catch (e) { /* biarkan hasil lama */ }
       }
@@ -1945,14 +2155,21 @@ const GT = (() => {
     if (guardRejected > 0) onStatus('🛡 FASE 31: ' + guardRejected + ' hasil ditolak sebagai halusinasi — tidak disimpan, silakan "Ulangi yang gagal" untuk mencoba mesin lain');
     return result;
   }
-  function applyTranslations(items, result) {
+  // FASE 36: opts.fileScope ('file:path') dipakai untuk teks di luar
+  // passage + atribut + judul. Tanpa opts, lookup sama seperti dulu
+  // (unitKey(null, teks) = teks).
+  function applyTranslations(items, result, opts) {
+    const fileScopeArg = (opts && opts.fileScope) || null;
     let applied = 0, failed = 0, cached = 0;
     for (const item of items) {
       if (item.kind === 'text') {
         let changed = false;
+        // FASE 36: segmen dicari dengan kunci (scope, teks) — segmen yang
+        // sama di dua passage mengambil terjemahan passage-nya sendiri.
+        const scope = item.passage ? twScope(item.passage) : fileScopeArg;
         let built = item.segments.map((seg) => {
           if (!seg.translatable) return seg.text;
-          const r = result.get(seg.text);
+          const r = result.get(unitKey(scope, seg.text));
           if (r && !r.failed && r.translated !== seg.text) { changed = true; if (r.fromCache) cached++; return r.translated; }
           if (r && r.failed) failed++;
           return seg.text;
@@ -1976,7 +2193,7 @@ const GT = (() => {
 
         if (changed) { item.node.data = built; applied++; }
       } else if (item.kind === 'attr') {
-        const r = result.get(item.original);
+        const r = result.get(unitKey(fileScopeArg, item.original));
         if (r && !r.failed && r.translated !== item.original) {
           // Cek variabel hilang (Fase 7) — atribut diterjemahkan utuh
           // tanpa perlindungan placeholder, jadi Google bisa menghapusnya.
@@ -1989,7 +2206,7 @@ const GT = (() => {
         }
         else if (r && r.failed) failed++;
       } else if (item.kind === 'title') {
-        const r = result.get(item.original);
+        const r = result.get(unitKey(fileScopeArg, item.original));
         if (r && !r.failed && r.translated !== item.original) {
           const missing = getMissingVars(item.original, r.translated);
           if (missing.length > 0) {
@@ -2021,16 +2238,18 @@ const GT = (() => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, 'text/html');
     const items = collectItems(doc, { twine: !!(opts && opts.twine) });
-    const units = collectUnits(items);
+    // FASE 36: teks di luar passage + atribut + judul berscope file.
+    const fileScopeArg = file.name ? fileScope(file.name) : null;
+    const units = collectUnits(items, fileScopeArg);
     const uniqTexts = units.map((u) => u.text);
-    const result = await translateTexts(uniqTexts, src, tgt, { onProgress, onStatus, cancelled, cacheOnly: !!(opts && opts.cacheOnly) });
+    const result = await translateTexts(uniqTexts, src, tgt, { onProgress, onStatus, cancelled, cacheOnly: !!(opts && opts.cacheOnly), scopes: units.map((u) => u.scope) });
     const titleItem = items.find((i) => i.kind === 'title');
     let titleApplied = 0, titleCached = 0;
     if (titleItem) {
-      const r = result.get(titleItem.original);
+      const r = result.get(unitKey(fileScopeArg, titleItem.original));
       if (r && !r.failed && r.translated !== titleItem.original) { doc.title = r.translated; titleApplied = 1; if (r.fromCache) titleCached = 1; }
     }
-    const applyInfo = applyTranslations(items.filter((i) => i.kind !== 'title'), result);
+    const applyInfo = applyTranslations(items.filter((i) => i.kind !== 'title'), result, { fileScope: fileScopeArg });
     const failedTexts = uniqTexts.filter((t) => { const r = result.get(t); return r && r.failed; });
 
     // Suntik CSS jika opsi dicentang (perbaiki tata letak: teks Indonesia
@@ -2061,7 +2280,7 @@ const GT = (() => {
 
     return { html: serializeDoc(doc), stats: { totalItems: items.length, uniqueTexts: uniqTexts.length, translated: applyInfo.applied + titleApplied, fromCache: applyInfo.cached + titleCached, failed: failedTexts.length, failedTexts }, failedTexts, result };
   }
-  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, customBatch, setCustomProvider, parseCustomResponse, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, saveCache, cacheCap: CACHE_CAP, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel, isHallucinatedOutput, isCssClassList };
+  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, customBatch, setCustomProvider, parseCustomResponse, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, cacheKeyScoped, cacheLookup, unitKey, saveCache, cacheCap: CACHE_CAP, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel, isHallucinatedOutput, isCssClassList, isDangerousMacro, macroQuoteTranslatable, codeContainerEnd };
 })();
 window.GT = GT;
 
@@ -2114,6 +2333,9 @@ async function translateByRanges(content, ranges, src, tgt, opts) {
   // Teks yang mengandung entitas HTML (&lt;span&gt;) di-decode dulu supaya tag-nya
   // dikenali dan dilindungi, lalu di-encode lagi setelah terjemah supaya bentuk
   // file hasil sama seperti aslinya.
+  // FASE 36: opts.scope ('file:path') diteruskan ke translateTexts supaya
+  // core string dicache per file, konsisten dengan baris Daftar Teks.
+  const scope = (opts && opts.scope) || null;
   const uniq = [...new Set(ranges.map((r) => r.text))];
   const segOf = new Map(); // teks -> [{pre, core, post, translatable}]
   const depthOf = new Map(); // teks asli -> kedalaman decode entitas HTML
@@ -2131,14 +2353,15 @@ async function translateByRanges(content, ranges, src, tgt, opts) {
     segOf.set(t, segs);
     for (const s of segs) if (s.translatable) cores.add(s.core);
   }
-  const res = await GT.translateTexts([...cores], src, tgt, opts || {});
+  const coreList = [...cores];
+  const res = await GT.translateTexts(coreList, src, tgt, Object.assign({}, opts || {}, { scopes: coreList.map(() => scope) }));
   const final = new Map(); // teks -> {translated, failed, fromCache}
   for (const t of uniq) {
     const segs = segOf.get(t);
     let failed = false, fromCache = true, anyTranslated = false;
     let out = segs.map((s) => {
       if (!s.translatable) return s.core;
-      const r = res.get(s.core);
+      const r = res.get(unitKey(scope, s.core));
       if (r && !r.failed && r.translated !== s.core) { anyTranslated = true; if (!r.fromCache) fromCache = false; return s.pre + r.translated + s.post; }
       if (r && r.failed) { failed = true; fromCache = false; }
       return s.pre + s.core + s.post;
@@ -2166,6 +2389,9 @@ async function translateFileContent(fileRec, src, tgt, opts) {
   const ext = fileRec.ext;
   const cancelled = (opts && opts.cancelled) || { value: false };
   const onProgress = (opts && opts.onProgress) || (() => {});
+  // FASE 36: scope file untuk semua cabang non-passage ('file:path' —
+  // sama dengan yang dipakai scan/Daftar Teks untuk file ini).
+  const scope = fileRec.path ? fileScope(fileRec.path) : null;
   if (ext === 'html' || ext === 'htm') {
     const out = await GT.translateFile({ text: async () => content, name: fileRec.name }, src, tgt, { twine: !!(opts && opts.twine), fixCss: !!(opts && opts.fixCss), cacheOnly: !!(opts && opts.cacheOnly), cancelled, onProgress, onStatus: (opts && opts.onStatus) || (() => {}) });
     // Tambahan: terjemahkan juga string di dalam <script> inline. Teks game
@@ -2188,7 +2414,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
         const ranges = extractQuotedRanges(s.textContent).filter((r) => looksTranslatable(r.text) && !isCodeContextString(s.textContent, r) && r.text.trim() !== 'use strict');
         if (!ranges.length) continue;
         for (const r of ranges) sUnique.add(r.text);
-        const r2 = await translateByRanges(s.textContent, ranges, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
+        const r2 = await translateByRanges(s.textContent, ranges, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly), scope });
         s.textContent = r2.content;
         sApplied += r2.applied; sFailed += r2.failed; sCached += r2.cached;
         sFailedTexts.push(...r2.failedTexts);
@@ -2211,11 +2437,11 @@ async function translateFileContent(fileRec, src, tgt, opts) {
     try { obj = JSON.parse(content); } catch (e) { return { content, applied: 0, failed: 0, cached: 0, failedTexts: [], uniqueTexts: 0, error: 'JSON tidak valid' }; }
     const strings = []; walkJSON(obj, strings);
     const uniq = [...new Set(strings)];
-    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
+    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly), scopes: uniq.map(() => scope) });
     let applied = 0, failed = 0, cached = 0; const failedTexts = [];
     const walk = (v) => {
       if (typeof v === 'string') {
-        const r = res.get(v.trim().replace(/\s+/g, ' ')) || res.get(v);
+        const r = res.get(unitKey(scope, v.trim().replace(/\s+/g, ' '))) || res.get(unitKey(scope, v));
         if (r && !r.failed && r.translated !== v) { applied++; if (r.fromCache) cached++; return r.translated; }
         if (r && r.failed) { failed++; failedTexts.push(v); }
         return v;
@@ -2236,18 +2462,18 @@ async function translateFileContent(fileRec, src, tgt, opts) {
       if (isTl && !/new\s*$/.test(line)) continue;
       if (looksTranslatable(r.text)) ranges.push(r);
     }
-    const out = await translateByRanges(content, ranges, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
+    const out = await translateByRanges(content, ranges, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly), scope });
     return { ...out, uniqueTexts: [...new Set(ranges.map((r) => r.text))].length };
   }
   if (ext === 'po') {
     const pairs = []; const re = /(msgid\s+"((?:[^"\\]|\\.)*)"\s*\nmsgstr\s+")((?:[^"\\]|\\.)*)(")/g; let m;
     const uniq = [];
     while ((m = re.exec(content))) { const t = m[2].replace(/\\n/g, ' '); if (looksTranslatable(t) && !uniq.includes(t)) uniq.push(t); pairs.push({ msgid: t }); }
-    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
+    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly), scopes: uniq.map(() => scope) });
     let applied = 0, failed = 0, cached = 0; const failedTexts = [];
     const out = content.replace(/(msgid\s+"((?:[^"\\]|\\.)*)"\s*\nmsgstr\s+")((?:[^"\\]|\\.)*)(")/g, (all, pre, id, old, end) => {
       const t = id.replace(/\\n/g, ' ');
-      const r = res.get(t);
+      const r = res.get(unitKey(scope, t));
       if (r && !r.failed && r.translated !== t) { applied++; if (r.fromCache) cached++; return pre + r.translated.replace(/"/g, '\\"') + end; }
       if (r && r.failed) { failed++; failedTexts.push(t); }
       return all;
@@ -2266,7 +2492,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
       });
     });
     const uniq = [...new Set(cells.map((c) => c.text))];
-    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
+    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly), scopes: uniq.map(() => scope) });
     let applied = 0, failed = 0, cached = 0; const failedTexts = [];
     const newLines = lines.map((line, li) => {
       if (!line.trim()) return line;
@@ -2274,7 +2500,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
       return parts.map((cell, ci) => {
         if (ci === 0) return cell;
         const t = cell.trim().replace(/^"|"$/g, '');
-        const r = res.get(t);
+        const r = res.get(unitKey(scope, t));
         if (r && !r.failed && r.translated !== t) { applied++; if (r.fromCache) cached++; return '"' + r.translated.replace(/"/g, '""') + '"'; }
         if (r && r.failed) { failed++; failedTexts.push(t); }
         return cell;
@@ -2291,10 +2517,10 @@ async function translateFileContent(fileRec, src, tgt, opts) {
       });
     });
     const uniq = [...new Set(items.map((i) => i.original))];
-    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
+    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly), scopes: uniq.map(() => scope) });
     let applied = 0, failed = 0, cached = 0; const failedTexts = [];
     for (const it of items) {
-      const r = res.get(it.original);
+      const r = res.get(unitKey(scope, it.original));
       if (r && !r.failed && r.translated !== it.original) { it.node.data = r.translated; applied++; if (r.fromCache) cached++; }
       else if (r && r.failed) { failed++; failedTexts.push(it.original); }
     }
@@ -2303,11 +2529,11 @@ async function translateFileContent(fileRec, src, tgt, opts) {
   if (ext === 'txt' || ext === 'md') {
     const lines = content.split(/\r?\n/);
     const uniq = [...new Set(lines.map((l) => l.trim()).filter((t) => looksTranslatable(t)))];
-    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
+    const res = await GT.translateTexts(uniq, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly), scopes: uniq.map(() => scope) });
     let applied = 0, failed = 0, cached = 0; const failedTexts = [];
     const out = lines.map((line) => {
       const t = line.trim();
-      const r = res.get(t);
+      const r = res.get(unitKey(scope, t));
       if (r && !r.failed && r.translated !== t) { applied++; if (r.fromCache) cached++; return r.translated; }
       if (r && r.failed) { failed++; failedTexts.push(t); }
       return line;
@@ -2316,7 +2542,7 @@ async function translateFileContent(fileRec, src, tgt, opts) {
   }
   if (ext === 'js' || ext === 'mjs' || ext === 'gd' || ext === 'tscn' || ext === 'tres') {
     const ranges = extractQuotedRanges(content).filter((r) => looksTranslatable(r.text) && !isCodeContextString(content, r) && r.text.trim() !== 'use strict');
-    const out = await translateByRanges(content, ranges, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly) });
+    const out = await translateByRanges(content, ranges, src, tgt, { cancelled, onProgress, cacheOnly: !!(opts && opts.cacheOnly), scope });
     return { ...out, uniqueTexts: [...new Set(ranges.map((r) => r.text))].length };
   }
   return { content, applied: 0, failed: 0, cached: 0, failedTexts: [], uniqueTexts: 0, error: 'Jenis file tidak didukung terjemahan' };
@@ -2542,7 +2768,7 @@ function scanFiles(files) {
   for (const f of files) {
     if (f.content === null || f.content === undefined) continue;
     const a = analyzeFile(f.path, f.content);
-    f.count = a.count; f.chars = a.chars; f.lang = a.lang; f.samples = a.samples; f.isLangFile = a.isLangFile; f.strings = a.strings; f.skippedEngineStrings = a.skippedEngineStrings || 0;
+    f.count = a.count; f.chars = a.chars; f.lang = a.lang; f.samples = a.samples; f.isLangFile = a.isLangFile; f.strings = a.strings; f.stringRows = a.stringRows || []; f.skippedEngineStrings = a.skippedEngineStrings || 0;
     if (!SUPPORTED_EXTS.includes(f.ext)) { f.status = 'tidak-didukung'; f.note = 'Jenis file tidak didukung terjemahan'; }
     else if (f.count === 0) { f.status = 'tidak-ada-teks'; f.note = 'Tidak ada teks'; }
     else f.status = 'didukung';
@@ -2813,7 +3039,11 @@ btnTranslateAll.addEventListener('click', () => runTranslation(allFiles.filter((
    mesin online — sehingga file langsung jadi tanpa harus mengeklik
    "Terjemahkan Semua" lagi. Hanya teks di daftar yang diterjemahkan;
    kode game tidak disentuh. */
-let textListFile = null, textListStrings = [];
+let textListFile = null, textListRows = [];
+// FASE 36: tiap baris = { text, scope, prev, next, line } — scope
+// 'tw:Passage' / 'file:path' / null (global). Teks yang sama di dua
+// passage jadi DUA baris (bisa diterjemahkan berbeda); prev/next =
+// kalimat sebelum/sesudah di passage yang sama (label konteks).
 // Pagination: hanya 200 baris yang dirender per halaman, supaya daftar besar
 // (mis. warung.html: 50.285 teks) tidak membekukan browser — versi lama
 // merender SEMUA baris + textarea sekaligus dalam satu DOM raksasa.
@@ -2837,29 +3067,32 @@ function textListGet(i) {
   return (textListEdits[i] || '').trim();
 }
 function textListGoTo(page) {
-  if (!textListStrings.length) return;
+  if (!textListRows.length) return;
   textListSavePage();
   textListPage = Math.min(Math.max(0, page), textListPageCount() - 1);
   renderTextList();
 }
 function renderTextList() {
   const wrap = $('textListWrap');
-  if (!textListStrings.length) { wrap.innerHTML = '<p class="muted" style="padding:12px">Tidak ada teks di file ini.</p>'; $('textListPager').style.display = 'none'; return; }
+  if (!textListRows.length) { wrap.innerHTML = '<p class="muted" style="padding:12px">Tidak ada teks di file ini.</p>'; $('textListPager').style.display = 'none'; return; }
 
   // 1. Lakukan filter berdasarkan kotak pencarian
   const query = ($('textListSearch') ? $('textListSearch').value : '').toLowerCase().trim();
   const statusFilter = ($('textListFilter') ? $('textListFilter').value : 'all');
   textListFilteredIndices = [];
 
-  for (let i = 0; i < textListStrings.length; i++) {
-    const orig = textListStrings[i].toLowerCase();
+  for (let i = 0; i < textListRows.length; i++) {
+    const row = textListRows[i];
+    const orig = row.text.toLowerCase();
     const transText = textListEdits[i] || '';
     const trans = transText.toLowerCase();
+    // FASE 36: pencarian juga mencocokkan nama passage/file (scope).
+    const scopeLbl = (row.scope || '').toLowerCase();
 
     // 1. Cek Pencarian (Search)
     let matchSearch = true;
     if (query) {
-      matchSearch = orig.includes(query) || trans.includes(query);
+      matchSearch = orig.includes(query) || trans.includes(query) || scopeLbl.includes(query);
     }
     if (!matchSearch) continue;
 
@@ -2870,7 +3103,7 @@ function renderTextList() {
     } else if (statusFilter === 'translated') {
       matchStatus = !!transText.trim();
     } else if (statusFilter === 'failed') {
-      matchStatus = !!transText.trim() && getMissingVars(textListStrings[i], transText).length > 0;
+      matchStatus = !!transText.trim() && getMissingVars(row.text, transText).length > 0;
     }
 
     if (matchStatus) textListFilteredIndices.push(i);
@@ -2885,8 +3118,9 @@ function renderTextList() {
   let html = '<table style="width:100%; border-collapse:collapse; font-size:13px"><thead><tr><th style="width:52px; text-align:right; padding:6px">#</th><th style="text-align:left; padding:6px">Teks Asli (EN)</th><th style="text-align:left; padding:6px">Terjemahan (ID) — bisa diedit</th></tr></thead><tbody>';
 
   for (let idx = start; idx < end; idx++) {
-    const i = textListFilteredIndices[idx]; // index asli dari array textListStrings
-    const s = textListStrings[i];
+    const i = textListFilteredIndices[idx]; // index asli dari array textListRows
+    const row = textListRows[i];
+    const s = row.text;
     let transText = textListEdits[i] || '';
     let missingVars = [];
     if (transText) {
@@ -2894,8 +3128,19 @@ function renderTextList() {
     }
     let borderStyle = missingVars.length > 0 ? 'border: 2px solid #ef4444 !important;' : '';
     let titleAttr = missingVars.length > 0 ? 'title="⚠️ Variabel hilang: ' + esc(missingVars.join(', ')) + '"' : '';
+    // FASE 36: label konteks kecil di bawah teks asli — passage + kalimat
+    // sebelum/sesudahnya, supaya teks yang sama di dua passage bisa dibedakan.
+    let ctxHtml = '';
+    const ctxLbl = rowContextLabel(row);
+    if (ctxLbl) {
+      let snippet = '';
+      if (row.prev || row.next) {
+        snippet = ' — "' + (row.prev ? ctxSnippet(row.prev, 40) : '') + (row.prev && row.next ? ' | ' : '') + (row.next ? ctxHead(row.next, 40) : '') + '"';
+      }
+      ctxHtml = '<div style="color:#64748b; font-size:11px; margin-top:4px">' + esc(ctxLbl + snippet) + '</div>';
+    }
     html += '<tr style="border-top:1px solid #e2e8f0"><td style="text-align:right; padding:6px; color:#64748b; vertical-align:top">' + (i + 1) + '</td>'
-      + '<td style="padding:6px; vertical-align:top; white-space:pre-wrap; word-break:break-word">' + esc(s) + '</td>'
+      + '<td style="padding:6px; vertical-align:top; white-space:pre-wrap; word-break:break-word">' + esc(s) + ctxHtml + '</td>'
       + '<td style="padding:6px; vertical-align:top"><textarea class="tl-input" data-idx="' + i + '" rows="2" style="width:100%; box-sizing:border-box; font:inherit; resize:vertical; ' + borderStyle + '" placeholder="— belum diterjemahkan —" ' + titleAttr + '>' + esc(transText) + '</textarea></td></tr>';
   }
   html += '</tbody></table>';
@@ -2913,7 +3158,7 @@ function renderTextList() {
   if (query) {
     $('textListStatus').textContent = 'Ditemukan ' + textListFilteredIndices.length + ' teks yang cocok dengan "' + query + '".';
   } else {
-    $('textListStatus').textContent = textListStrings.length + ' teks di ' + (textListFile ? textListFile.path : '') + '. Klik "Terjemahkan Daftar" untuk mengisi kolom terjemahan.';
+    $('textListStatus').textContent = textListRows.length + ' teks di ' + (textListFile ? textListFile.path : '') + '. Klik "Terjemahkan Daftar" untuk mengisi kolom terjemahan.';
   }
 
   $('btnTranslateList').disabled = false; $('btnApplyList').disabled = false; $('btnDownloadList').disabled = false; $('btnUploadList').disabled = false; if ($('btnListCopyAll')) $('btnListCopyAll').disabled = false;
@@ -2928,7 +3173,12 @@ $('btnShowList').addEventListener('click', () => {
   const path = $('textListFile').value;
   textListFile = allFiles.find((f) => f.path === path) || null;
   if (!textListFile) { $('textListStatus').textContent = 'Pilih file dulu.'; return; }
-  textListStrings = (textListFile.strings || []).slice();
+  // FASE 36: baris konteks dari scan (stringRows). Cadangan untuk file
+  // dari proyek lama yang belum punya stringRows: satu baris global per teks.
+  textListRows = (textListFile.stringRows && textListFile.stringRows.length
+    ? textListFile.stringRows
+    : (textListFile.strings || []).map((t) => ({ text: t, scope: null, prev: null, next: null, line: null }))
+  ).slice();
   textListPage = 0; textListEdits = {};
   if ($('textListSearch')) { $('textListSearch').value = ''; $('textListSearch').disabled = false; } // Reset & aktifkan pencarian
   if ($('textListFilter')) { $('textListFilter').value = 'all'; $('textListFilter').disabled = false; }
@@ -2936,25 +3186,25 @@ $('btnShowList').addEventListener('click', () => {
   renderTextList();
 });
 $('textListSearch').addEventListener('input', () => {
-  if (!textListStrings.length) return;
+  if (!textListRows.length) return;
   textListSavePage(); // Simpan editan di halaman yang sedang tampil sebelum filter berubah
   textListPage = 0; // Reset ke halaman pertama
   renderTextList();
 });
 $('textListFilter').addEventListener('change', () => {
-  if (!textListStrings.length) return;
+  if (!textListRows.length) return;
   textListSavePage(); // Simpan editan di halaman aktif
   textListPage = 0; // Reset ke halaman pertama
   renderTextList();
 });
 $('btnListCopyAll').addEventListener('click', () => {
-  if (!textListStrings.length) return;
+  if (!textListRows.length) return;
   if (confirm('Tindakan ini akan menyalin SEMUA teks asli ke kolom terjemahan. Teks terjemahan yang sudah ada akan tertimpa. Lanjutkan?')) {
-    textListStrings.forEach((s, i) => {
-      textListEdits[i] = s;
+    textListRows.forEach((row, i) => {
+      textListEdits[i] = row.text;
     });
     renderTextList();
-    $('textListStatus').textContent = 'Semua ' + textListStrings.length + ' teks asli telah disalin ke kolom terjemahan. Silakan edit kata-kata yang perlu diubah.';
+    $('textListStatus').textContent = 'Semua ' + textListRows.length + ' teks asli telah disalin ke kolom terjemahan. Silakan edit kata-kata yang perlu diubah.';
   }
 });
 // FASE 20: tombol Batal untuk Daftar Teks — terjemahan bisa di-stop dan
@@ -2968,7 +3218,7 @@ $('btnCancelList').addEventListener('click', () => {
   $('textListStatus').textContent = 'Membatalkan… (menyelesaikan batch yang sedang berjalan)';
 });
 $('btnTranslateList').addEventListener('click', async () => {
-  if (!textListStrings.length) return;
+  if (!textListRows.length) return;
   const src = srcLang.value, tgt = tgtLang.value;
   if (src === tgt) { $('textListStatus').textContent = 'Bahasa sumber dan target sama — pilih bahasa target yang berbeda.'; return; }
   textListSavePage(); // simpan edit manual di halaman aktif sebelum menimpa
@@ -2976,10 +3226,13 @@ $('btnTranslateList').addEventListener('click', async () => {
   $('btnApplyList').disabled = true; // FASE 28: jangan terapkan daftar yang masih setengah jalan
   $('btnCancelList').disabled = false; // FASE 20: bisa dibatalkan
   textListCancelFlag = { value: false };
-  $('textListStatus').textContent = 'Menerjemahkan daftar (' + textListStrings.length + ' teks)...';
+  $('textListStatus').textContent = 'Menerjemahkan daftar (' + textListRows.length + ' teks)...';
   setBar(0); // FASE 17: tampilkan progress bar + hitungan langsung (X/total teks)
   try {
-    const res = await GT.translateTexts(textListStrings, src, tgt, {
+    // FASE 36: tiap baris diterjemahkan dengan scope-nya (passage/file),
+    // supaya teks yang sama di dua passage tidak saling menimpa hasilnya.
+    const res = await GT.translateTexts(textListRows.map((r) => r.text), src, tgt, {
+      scopes: textListRows.map((r) => r.scope),
       // FASE 17: progress live — tampilkan berapa teks yang sudah selesai
       // dari total, plus mesin yang sedang dipakai (cache/kamus/Google/dll).
       onProgress: (done, total, engine) => {
@@ -2990,9 +3243,9 @@ $('btnTranslateList').addEventListener('click', async () => {
       cancelled: textListCancelFlag // FASE 20: bisa di-stop
     });
     let filled = 0, failed = 0;
-    textListStrings.forEach((s, i) => {
-      const r = res.get(s);
-      if (r && !r.failed && r.translated && r.translated !== s) { textListEdits[i] = r.translated; filled++; }
+    textListRows.forEach((row, i) => {
+      const r = res.get(unitKey(row.scope, row.text));
+      if (r && !r.failed && r.translated && r.translated !== row.text) { textListEdits[i] = r.translated; filled++; }
       else if (r && r.failed) { failed++; }
     });
     renderTextList(); // tampilkan hasil di halaman saat ini (edit tersimpan di semua halaman)
@@ -3002,7 +3255,7 @@ $('btnTranslateList').addEventListener('click', async () => {
       $('textListStatus').textContent = 'Selesai: ' + filled + ' terisi, ' + failed + ' gagal. Edit yang kurang pas, lalu klik "Timpa File Asli".';
     }
     // FASE 28: daftar besar melebihi cache browser — ingatkan soal Simpan Proyek.
-    if (textListStrings.length > GT.cacheCap || window.gtCacheFull) {
+    if (textListRows.length > GT.cacheCap || window.gtCacheFull) {
       $('textListStatus').textContent += ' ⚠️ Daftar lebih besar dari cache browser (' + GT.cacheCap + ' teks) — hanya ' + GT.cacheCap + ' terjemahan terakhir yang tersimpan permanen. Klik "Simpan Proyek" (.json) supaya tidak hilang kalau halaman di-refresh.';
     }
   } catch (e) { $('textListStatus').textContent = 'Gagal menerjemahkan daftar: ' + (e && e.message ? e.message : e); }
@@ -3018,13 +3271,15 @@ $('btnTranslateList').addEventListener('click', async () => {
 // dipakai, tanpa mesin online — jadi hasilnya langsung jadi dan cepat.
 // Teks yang tidak ada di daftar tetap Inggris dan dihitung gagal.
 $('btnApplyList').addEventListener('click', async () => {
-  if (!textListStrings.length) return;
+  if (!textListRows.length) return;
   if (!textListFile) { $('textListStatus').textContent = 'Pilih file dulu.'; return; }
   textListSavePage(); // simpan edit di halaman yang sedang tampil
   let applied = 0;
-  textListStrings.forEach((s, i) => {
+  // FASE 36: terjemahan ditulis ke cache dengan kunci scope-nya, supaya
+  // Timpa menerapkan terjemahan yang benar ke passage yang benar.
+  textListRows.forEach((row, i) => {
     const t = textListGet(i);
-    if (t && t !== s) { GT.cache.set(srcLang.value + '|' + tgtLang.value + '|' + s, t); applied++; }
+    if (t && t !== row.text) { GT.cache.set(GT.cacheKeyScoped(srcLang.value, tgtLang.value, row.scope, row.text), t); applied++; }
   });
   if (applied) GT.saveCache();
   const src = srcLang.value, tgt = tgtLang.value;
@@ -3064,18 +3319,24 @@ $('btnApplyList').addEventListener('click', async () => {
 // oleh textListSavePage), dan jeda revoke diperpanjang ke 60 detik supaya
 // unduhan blob besar (~10 MB) tidak terpotong.
 $('btnDownloadList').addEventListener('click', async () => {
-  if (!textListStrings.length) return;
+  if (!textListRows.length) return;
   textListSavePage(); // simpan edit di halaman yang sedang tampil
-  const total = textListStrings.length;
+  const total = textListRows.length;
   $('textListStatus').textContent = 'Menyiapkan daftar teks (' + total + ' teks)…';
   await new Promise((r) => setTimeout(r, 30)); // biarkan status tampil dulu
   const lines = [];
   const srcLbl = (srcLang.value || 'en').toUpperCase();
   const tgtLbl = (tgtLang.value || 'id').toUpperCase();
   for (let i = 0; i < total; i++) {
-    const s = textListStrings[i];
+    const row = textListRows[i];
+    const s = row.text;
     const t = (textListEdits[i] || '').trim();
     lines.push('----------' + (i + 1));
+    // FASE 36: baris Konteks membawa scope-nya ('tw:Start' / 'file:...')
+    // supaya Upload bisa memasangkan terjemahan ke baris passage yang
+    // benar. File .txt lama tanpa baris ini tetap bisa diimpor (scope null
+    // = baris pertama dengan teks yang sama).
+    if (row.scope) lines.push('Konteks: ' + row.scope);
     lines.push(srcLbl + ': ' + s);
     lines.push(tgtLbl + ': ' + (t || '(belum diterjemahkan)'));
     if (i % 2000 === 1999) {
@@ -3102,8 +3363,11 @@ function parseTextList(txt) {
   const codeRe = /^[A-Z]{2,3}: /;
   let cur = null;
   for (const line of lines) {
-    if (/^-{6,}\d+\s*$/.test(line)) { if (cur) out.push(cur); cur = { en: null, id: null }; continue; }
+    if (/^-{6,}\d+\s*$/.test(line)) { if (cur) out.push(cur); cur = { en: null, id: null, scope: null }; continue; }
     if (!cur) continue;
+    // FASE 36: baris Konteks (sebelum baris sumber) membawa scope
+    // ('tw:Start' / 'file:...'). File lama tanpa baris ini -> scope null.
+    if (cur.en === null && /^Konteks: /.test(line)) { cur.scope = line.replace(/^Konteks: /, '').trim() || null; continue; }
     if (cur.en === null && codeRe.test(line)) { cur.en = line.replace(codeRe, ''); continue; }
     if (cur.en !== null && cur.id === null && codeRe.test(line)) { cur.id = line.replace(codeRe, ''); continue; }
     if (cur.en !== null && cur.id === null) { cur.en += '\n' + line; continue; }
@@ -3119,17 +3383,26 @@ $('textListUpload').addEventListener('change', async (e) => {
   const f = e.target.files && e.target.files[0];
   e.target.value = '';
   if (!f) return;
-  if (!textListStrings.length) { $('textListStatus').textContent = 'Tampilkan dulu daftar teksnya (pilih file lalu klik "Tampilkan Daftar Teks").'; return; }
+  if (!textListRows.length) { $('textListStatus').textContent = 'Tampilkan dulu daftar teksnya (pilih file lalu klik "Tampilkan Daftar Teks").'; return; }
   let txt = '';
   try { txt = await f.text(); } catch (err) { $('textListStatus').textContent = 'Gagal membaca file: ' + (err && err.message ? err.message : err); return; }
   const recs = parseTextList(txt);
+  // FASE 36: cocokkan per (teks, scope); record lama tanpa scope cocok
+  // dengan baris pertama yang teksnya sama (perilaku lama).
+  const byUnit = new Map();
   const byEn = new Map();
-  textListStrings.forEach((s, i) => { if (!byEn.has(s.trim())) byEn.set(s.trim(), i); });
+  textListRows.forEach((row, i) => {
+    const k = unitKey(row.scope, row.text.trim());
+    if (!byUnit.has(k)) byUnit.set(k, i);
+    if (!byEn.has(row.text.trim())) byEn.set(row.text.trim(), i);
+  });
   let filled = 0, skipped = 0;
   for (const r of recs) {
     const id = (r.id || '').trim();
     if (!id || id === '(belum diterjemahkan)') { skipped++; continue; }
-    const idx = byEn.get((r.en || '').trim());
+    const en = (r.en || '').trim();
+    let idx = r.scope ? byUnit.get(unitKey(r.scope, en)) : undefined;
+    if (idx === undefined) idx = byEn.get(en);
     if (idx === undefined) { skipped++; continue; }
     textListEdits[idx] = id; // simpan di semua halaman, bukan cuma yang tampil
     filled++;
@@ -3232,14 +3505,13 @@ btnDownloadTl.addEventListener('click', async () => {
   const rpyFiles = allFiles.filter((f) => f.ext === 'rpy' && f.content !== null && f.content !== undefined);
   if (!rpyFiles.length) { statusEl.textContent = 'Tidak ada file .rpy.'; return; }
   if (typeof JSZip === 'undefined') { statusEl.textContent = 'Pembaca ZIP belum termuat.'; return; }
-  const lookup = (raw) => {
-    const k = GT.cacheKey(src, tgt, raw);
-    return GT.cache.has(k) ? GT.cache.get(k) : null;
-  };
   try {
     const zip = new JSZip();
     let files = 0, say = 0, strings = 0, translated = 0;
     for (const f of rpyFiles) {
+      // FASE 36: terjemahan .rpy dicache per file ('file:path'); lookup
+      // mencoba kunci file dulu, lalu kunci global lama (cacheLookup).
+      const lookup = (raw) => GT.cacheLookup(src, tgt, fileScope(f.path), raw);
       const built = renpyTlBuild(f.path, f.content, tgt, lookup);
       if (!built) continue;
       zip.file(renpyTlPath(f.path, tgt), built.content);
@@ -4370,9 +4642,10 @@ function renpyPoBuild(files, lang) {
 
 window.GTGabungan = {
   looksTranslatable, detectLang, isLangFile, analyzeFile, scanFiles,
-  extractFromHTML, extractFromJSON, extractFromRpy, extractFromPo, extractFromCsv, extractFromXml,
+  extractFromHTML, extractFromHTMLData, extractFromJSON, extractFromRpy, extractFromPo, extractFromCsv, extractFromXml,
   extractQuotedRanges, isCodeContextString, escapeForQuote, protectSegments, translateSegment, getMissingVars, decodeHTMLEntities, encodeHTMLEntities,
-  splitMacroToken, macroQuoteTranslatable, isDangerousMacro,
+  splitMacroToken, macroQuoteTranslatable, isDangerousMacro, codeContainerEnd,
+  unitKey, twScope, fileScope, rowContextLabel, dedupeRows, rowsFromStrings, parseTextList,
   translateFileContent, checkTranslated, repairFile, compiledHint, kindLabel,
   renpyMd5, renpyLexerDecode, renpyPyDecode, renpyEncodeSayString, renpyStringQuote,
   renpyEscapeBadPercent, renpySayGetCode, renpyBlockDigest, renpyComputeIdentifier,
