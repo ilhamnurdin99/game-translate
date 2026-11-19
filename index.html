@@ -91,7 +91,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <body>
 <header>
   <h1>🎮 Game Translate — Cek &amp; Terjemah Game</h1>
-  <p>Cek dulu di file mana bahasa game disimpan, centang file yang mau diterjemahkan, lalu download hasilnya sebagai ZIP. Tanpa server, semua proses jalan di perangkatmu. <span style="display:inline-block; margin-top:6px; padding:2px 10px; border:1px solid #38bdf8; border-radius:999px; color:#38bdf8; font-size:12px; font-weight:700">FASE 48</span></p>
+  <p>Cek dulu di file mana bahasa game disimpan, centang file yang mau diterjemahkan, lalu download hasilnya sebagai ZIP. Tanpa server, semua proses jalan di perangkatmu. <span style="display:inline-block; margin-top:6px; padding:2px 10px; border:1px solid #38bdf8; border-radius:999px; color:#38bdf8; font-size:12px; font-weight:700">FASE 49</span></p>
 </header>
 <main>
   <div class="tabs">
@@ -236,6 +236,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <button id="btnDownloadPoRenpy" disabled>📄 Buat .po (Ren'Py)</button>
       <button id="btnDownloadPo" disabled>📄 Buat .po (Godot)</button>
       <button id="btnDownloadTmx" disabled>⬇ Download TMX</button>
+      <button id="btnImportTmx" style="background:#0f766e; color:#fff;">⬆ Impor TMX</button>
+      <input type="file" id="tmxUpload" accept=".tmx,.xml" style="display:none">
       <button id="btnReport" disabled>Download Laporan (.txt)</button>
       <button id="btnDownloadQa" disabled>Download Laporan QA (.md)</button>
     </div>
@@ -325,7 +327,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Penjaga anti-halusinasi (FASE 31): kalau mesin mengembalikan string sampah yang sama untuk banyak teks berbeda, atau class CSS diterjemahkan, hasilnya <b>ditolak dan tidak disimpan</b> — teksnya ditandai gagal supaya bisa diulang lewat mesin lain, bukan merusak game.</li>
       <li>QA per teks (FASE 38): setelah diterjemahkan, klik <b>Cek Hasil</b> — tiap pasangan sumber→target diperiksa: variabel, tag, angka, tanda baca akhir, spasi/newline, kata berulang, glosarium, dan rasio panjang (di luar 0,4–2,5x). Baris bermasalah di <b>Daftar Teks</b> ditandai ⚠ dan bisa disaring lewat filter "Bermasalah QA"; laporan lengkap bisa diunduh lewat <b>Download Laporan QA (.md)</b>. QA hanya peringatan — Timpa/Download tetap jalan.</li>
       <li>Perbaikan variabel otomatis (FASE 39): kalau ada terjemahan yang kehilangan variabel, klik <b>Perbaiki</b> — variabel yang hilang disisipkan kembali dari teks aslinya (di posisi yang sama kalau bisa ditebak), lalu file dibangun ulang, jadi tidak lagi dikembalikan ke asli hanya karena variabel hilang. Saat <b>Timpa File Asli</b> pun variabel diperbaiki dulu sebelum ditempel ke file.</li>
-      <li>Saran fuzzy (FASE 38): saat "Terjemahkan Daftar", teks yang tidak ada di cache persis dicarikan terjemahan mirip dari cache (≥80%) — ditandai ≈87% dan <b>perlu ditinjau</b>, bukan terjemahan final. Terjemahan yang sudah bersih QA bisa diekspor sebagai memori terjemahan lewat <b>Download TMX</b> (file <b>id.tmx</b>) — bisa dibuka di OmegaT, Trados, atau memoQ, dan dipakai lagi saat game update.</li>
+      <li>Saran fuzzy (FASE 38): saat "Terjemahkan Daftar", teks yang tidak ada di cache persis dicarikan terjemahan mirip dari cache (≥80%) — ditandai ≈87% dan <b>perlu ditinjau</b>, bukan terjemahan final. Terjemahan yang sudah bersih QA bisa diekspor sebagai memori terjemahan lewat <b>Download TMX</b> (file <b>id.tmx</b>) — bisa dibuka di OmegaT, Trados, atau memoQ, dan dipakai lagi saat game update. Sejak FASE 49, memori terjemahan juga bisa <b>diimpor</b> lewat tombol <b>⬆ Impor TMX</b> (ekspor game lama, atau file TMX dari OmegaT/Trados/memoQ) — pasangan yang sudah ada di cache tidak ditimpa, dan terjemahan berikutnya otomatis memakai memori ini. Autosave (FASE 49): hasil scan, edit Daftar Teks, dan <b>seluruh</b> cache terjemahan (puluhan ribu entri, bukan cuma 4000) disimpan otomatis ke IndexedDB setiap ~30 detik dan setiap batch terjemahan selesai — kalau halaman tertutup atau crash, buka lagi web app lalu klik <b>Pulihkan</b> di banner "Sesi terakhir ditemukan". Tombol Simpan Proyek (.json) tetap ada untuk backup/copy antar-perangkat.</li>
     </ol>
     <p class="hint">Mesin terjemahan: provider custom (kalau diaktifkan) → kamus bawaan (istilah game umum, offline) → Google Translate → endpoint Chrome → Microsoft Edge → penerjemah bawaan Chrome (PC, offline setelah model terunduh) → MyMemory. Teks yang sudah diterjemahkan tersimpan otomatis di cache browser (4000 terjemahan terakhir) — kalau proses dihentikan (tombol Batal), klik "Terjemahkan Daftar" lagi nanti dan teks yang sudah selesai langsung terisi dari cache, hanya sisanya yang diterjemahkan. Untuk daftar lebih besar dari 4000 teks, klik "Simpan Proyek" (.json) supaya tidak hilang kalau halaman di-refresh. Kode game (script, style, nama variable) tidak disentuh. Teks di dalam gambar/canvas tidak bisa diterjemahkan.</p>
   </section>
@@ -5387,6 +5389,92 @@ btnDownloadTmx.addEventListener('click', () => {
   statusEl.textContent = 'TMX di-download sebagai ' + a.download + ' (' + built.tuCount + ' unit; ' + skippedErrors + ' segmen dilewati karena error QA, ' + skippedSame + ' dilewati karena kosong/sama dengan sumber). Bisa dibuka di OmegaT, Trados, atau memoQ — dan dipakai lagi saat game update.';
   log('Export TMX: ' + built.tuCount + ' tu, ' + skippedErrors + ' error-QA dilewati, ' + skippedSame + ' kosong/sama dilewati.');
 });
+/* ================= FITUR IMPOR TMX (FASE 49) =================
+   Kebalikan dari "Download TMX": muat memori terjemahan (ekspor TMX dari
+   game lama, atau dari OmegaT/Trados/memoQ) ke cache, supaya game yang
+   di-update tidak perlu diterjemahkan dari nol. Pasangan yang sudah ada
+   di cache TIDAK ditimpa; unit dengan bahasa yang tidak cocok dropdown
+   sumber/target dilewati. Setelah diimpor, "Terjemahkan Daftar" otomatis
+   memakai memori ini (dan saran fuzzy ikut memakainya). */
+function tmxNormLang(l) { return String(l || '').trim().toLowerCase().replace(/_/g, '-'); }
+function tmxBaseLang(l) { return tmxNormLang(l).split('-')[0]; }
+// Pilih pasangan sumber->target dari peta {lang: teks} satu unit TMX.
+// Fungsi murni (tanpa DOM) supaya bisa diuji di Node. Aturan: (1) kode
+// bahasa persis sesuai dropdown; (2) kode ternormalisasi (en-US == en-us);
+// (3) kode dasar (en-US == en) supaya file TMX dari CAT tools tetap cocok;
+// (4) fallback: unit 2 bahasa yang salah satunya = target, bahasa lain
+// jadi sumber. Kembalikan null kalau tidak ada pasangan yang aman.
+function tmxSelectPair(segByLang, wantSrc, wantTgt) {
+  const keys = Object.keys(segByLang);
+  const pick = (want) => {
+    if (Object.prototype.hasOwnProperty.call(segByLang, want)) return want;
+    const w = tmxNormLang(want);
+    for (const k of keys) if (tmxNormLang(k) === w) return k;
+    const wb = tmxBaseLang(want);
+    for (const k of keys) if (tmxBaseLang(k) === wb) return k;
+    return null;
+  };
+  const srcKey = pick(wantSrc), tgtKey = pick(wantTgt);
+  if (srcKey && tgtKey && srcKey !== tgtKey) return { source: segByLang[srcKey], target: segByLang[tgtKey], srcLang: srcKey, tgtLang: tgtKey };
+  if (!srcKey && tgtKey && keys.length === 2) {
+    const other = keys.find((k) => k !== tgtKey);
+    if (other) return { source: segByLang[other], target: segByLang[tgtKey], srcLang: other, tgtLang: tgtKey };
+  }
+  return null;
+}
+// Baca isi TMX (string XML) -> {pairs, totalTu, skipped, usedLangs}.
+function parseTmxContent(text, wantSrc, wantTgt) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('File TMX tidak valid (XML rusak).');
+  const tus = doc.getElementsByTagName('tu');
+  const pairs = []; const usedLangs = new Set();
+  let totalTu = 0, skipped = 0;
+  for (const tu of tus) {
+    totalTu++;
+    const segByLang = {};
+    for (const tuv of tu.getElementsByTagName('tuv')) {
+      const lang = tuv.getAttribute('xml:lang') || tuv.getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang') || '';
+      const seg = tuv.getElementsByTagName('seg')[0];
+      if (!lang || !seg) continue;
+      const txt = (seg.textContent || '').trim();
+      if (!txt) continue;
+      if (!(lang in segByLang)) segByLang[lang] = txt;
+    }
+    const picked = tmxSelectPair(segByLang, wantSrc, wantTgt);
+    if (!picked) { skipped++; continue; }
+    usedLangs.add(picked.srcLang + '->' + picked.tgtLang);
+    pairs.push({ source: picked.source, target: picked.target });
+  }
+  return { pairs, totalTu, skipped, usedLangs: Array.from(usedLangs) };
+}
+$('btnImportTmx').addEventListener('click', () => $('tmxUpload').click());
+$('tmxUpload').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const wantSrc = srcLang.value, wantTgt = tgtLang.value;
+    const parsed = parseTmxContent(text, wantSrc, wantTgt);
+    if (!parsed.pairs.length) {
+      statusEl.textContent = 'Tidak ada pasangan ' + wantSrc + ' → ' + wantTgt + ' di ' + file.name + ' (' + parsed.totalTu + ' unit dibaca). Pastikan dropdown bahasa sumber/target cocok dengan bahasa di file TMX.';
+      return;
+    }
+    let added = 0, existing = 0;
+    for (const p of parsed.pairs) {
+      if (GT.cacheLookup(wantSrc, wantTgt, null, p.source)) { existing++; continue; }
+      GT.cache.set(GT.cacheKey(wantSrc, wantTgt, p.source), p.target);
+      added++;
+    }
+    GT.saveCache();
+    const used = parsed.usedLangs.length ? parsed.usedLangs.join(', ') : wantSrc + '->' + wantTgt;
+    statusEl.textContent = 'Impor TMX: ' + added + ' memori terjemahan masuk cache (' + existing + ' sudah ada, tidak ditimpa; ' + parsed.skipped + ' unit dilewati; pasangan bahasa: ' + used + '). Terjemahan berikutnya otomatis memakai memori ini, termasuk saran fuzzy.';
+    log('Impor TMX ' + file.name + ': ' + added + ' ditambahkan, ' + existing + ' sudah ada, ' + parsed.skipped + ' dilewati dari ' + parsed.totalTu + ' unit.');
+  } catch (err) {
+    statusEl.textContent = 'Gagal mengimpor TMX: ' + err.message;
+    log('Impor TMX gagal: ' + err.message);
+  }
+});
 btnReport.addEventListener('click', () => {
   const lines = ['LAPORAN BAHASA GAME — Game Translate Gabungan'];
   lines.push('Total file diperiksa: ' + allFiles.length);
@@ -5413,9 +5501,12 @@ btnReport.addEventListener('click', () => {
    hilang saat browser ditutup. File biner (gambar/suara/font) TIDAK
    disimpan di JSON agar file tidak terlalu besar — upload ulang folder/
    ZIP aslinya jika ingin mengunduh game lengkap dengan biner. */
-$('btnSaveProject').addEventListener('click', () => {
-  if (!allFiles.length) return;
-  const projectData = {
+/* Susun data proyek (dipakai "Simpan Proyek" dan autosave IndexedDB).
+   Catatan: File biner (f.binary) tidak disimpan di JSON agar file tidak
+   terlalu besar. Saat memuat proyek, user cukup upload ulang folder/zip
+   aslinya jika ingin download biner. */
+function buildProjectData() {
+  return {
     version: '1.0',
     date: new Date().toISOString(),
     lastZipName: lastZipName,
@@ -5426,13 +5517,15 @@ $('btnSaveProject').addEventListener('click', () => {
       isLangFile: f.isLangFile, status: f.status, note: f.note,
       failedTexts: f.failedTexts, checkResult: f.checkResult,
       strings: f.strings, checked: f.checked,
-      // Catatan: File biner (f.binary) tidak disimpan di JSON agar file tidak terlalu besar.
-      // Saat memuat proyek, user cukup upload ulang folder/zip aslinya jika ingin download biner.
       binary: null
     })),
     textListEdits: textListEdits,
     cache: Array.from(GT.cache.entries())
   };
+}
+$('btnSaveProject').addEventListener('click', () => {
+  if (!allFiles.length) return;
+  const projectData = buildProjectData();
   const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -5441,6 +5534,7 @@ $('btnSaveProject').addEventListener('click', () => {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
   statusEl.textContent = 'Proyek berhasil disimpan ke ' + a.download;
 });
+
 
 $('btnLoadProject').addEventListener('click', () => $('projectUpload').click());
 $('projectUpload').addEventListener('change', async (e) => {
@@ -5475,6 +5569,136 @@ $('projectUpload').addEventListener('change', async (e) => {
     statusEl.textContent = 'Gagal memuat proyek: ' + err.message;
   }
 });
+
+/* ================= FITUR AUTOSAVE KE INDEXEDDB (FASE 49) =================
+   Penyelamat sesi: hasil scan + edit Daftar Teks + cache terjemahan
+   disimpan otomatis ke IndexedDB. Keuntungan dibanding localStorage:
+   kapasitas jauh lebih besar (~ratusan MB, bukan ~5MB), jadi batas cache
+   4000 entri tidak lagi bikin terjemahan hilang saat halaman di-refresh.
+   Kalau halaman tertutup / crash, banner "Sesi terakhir ditemukan" muncul
+   saat halaman dibuka lagi — tanpa perlu ingat klik Simpan Proyek. */
+const GT_IDB = (() => {
+  const DB_NAME = 'gt_autosave_v1', STORE = 'kv';
+  let dbPromise = null;
+  function open() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      if (typeof indexedDB === 'undefined') { reject(new Error('IndexedDB tidak tersedia')); return; }
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('Gagal membuka IndexedDB'));
+    });
+    return dbPromise;
+  }
+  function run(mode, fn) {
+    return open().then((db) => new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, mode);
+      let req = null;
+      try { req = fn(tx.objectStore(STORE)); } catch (e) { reject(e); return; }
+      // Hasil dibaca saat transaksi selesai. Untuk get(), result bisa
+      // undefined (kunci belum ada) dan itu sah — jangan diganti true.
+      tx.oncomplete = () => resolve(req ? req.result : undefined);
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+  return {
+    set: (key, value) => run('readwrite', (st) => st.put(value, key)),
+    get: (key) => run('readonly', (st) => st.get(key)),
+    del: (key) => run('readwrite', (st) => st.delete(key))
+  };
+})();
+// Tanda tangan murah untuk mendeteksi perubahan sesi tanpa stringify besar.
+function autosaveSignature() {
+  let cacheHash = 0;
+  for (const [k, v] of GT.cache) cacheHash = (Math.imul(cacheHash, 31) + k.length + (v ? String(v).length : 0)) | 0;
+  let translated = 0;
+  for (const f of allFiles) if (f.translatedContent != null) translated++;
+  return [allFiles.length, GT.cache.size, Object.keys(textListEdits).length, translated, cacheHash].join('/');
+}
+let autosaveLastSig = null, autosaveTimer = null, autosaveBusy = false;
+function scheduleAutosave(delayMs) {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(runAutosave, delayMs == null ? 3000 : delayMs);
+}
+async function runAutosave() {
+  if (autosaveBusy) return;
+  if (!allFiles.length && !GT.cache.size) return;
+  const sig = autosaveSignature();
+  if (sig === autosaveLastSig) return;
+  autosaveBusy = true;
+  try {
+    // Cache disimpan terpisah (penuh, sampai CACHE_MEM_CAP — jauh melebihi
+    // batas 4000 entri localStorage). Proyek disimpan tanpa cache supaya
+    // penulisan berkala tidak berat.
+    await GT_IDB.set('cache', Array.from(GT.cache.entries()));
+    if (allFiles.length) {
+      const proj = buildProjectData();
+      proj.cache = [];
+      await GT_IDB.set('project', proj);
+    }
+    autosaveLastSig = sig;
+  } catch (e) { /* IndexedDB penuh/diblokir — jangan ganggu kerja utama */ }
+  autosaveBusy = false;
+}
+// Jaring pengaman ganda: tick berkala 30 detik + hook GT.saveCache (dipanggil
+// top-level tiap batch terjemahan selesai / saat proyek dimuat).
+setInterval(() => scheduleAutosave(0), 30000);
+const _gtSaveCacheOrig = GT.saveCache;
+GT.saveCache = function () {
+  try { _gtSaveCacheOrig.apply(GT, arguments); } finally { scheduleAutosave(); }
+};
+// Banner pemulihan sesi saat halaman dibuka. Cache dipulihkan diam-diam;
+// sesi kerja (hasil scan) ditawarkan lewat tombol Pulihkan / Hapus.
+async function autosaveInit() {
+  try {
+    const savedCache = await GT_IDB.get('cache');
+    if (savedCache && savedCache.length) {
+      let added = 0;
+      for (const [k, v] of savedCache) if (!GT.cache.has(k)) { GT.cache.set(k, v); added++; }
+      if (added) { GT.saveCache(); log('Autosave: ' + added + ' entri cache terjemahan dipulihkan dari IndexedDB.'); }
+    }
+  } catch (e) { /* IndexedDB tidak tersedia — abaikan */ }
+  let saved = null;
+  try { saved = await GT_IDB.get('project'); } catch (e) { return; }
+  if (!saved || !saved.allFiles || !saved.allFiles.length) return;
+  const banner = document.createElement('div');
+  banner.style.cssText = 'margin:10px 0; padding:10px 12px; background:#1e293b; border:1px solid #38bdf8; border-radius:8px; font-size:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap';
+  const when = (() => { try { return new Date(saved.date).toLocaleString('id-ID'); } catch (e) { return '?'; } })();
+  const textCount = saved.allFiles.reduce((a, f) => a + (f.count || 0), 0);
+  const label = document.createElement('span');
+  label.textContent = '💾 Sesi terakhir ditemukan (' + when + ' — ' + saved.allFiles.length + ' file, ' + textCount + ' teks).';
+  const bRestore = document.createElement('button');
+  bRestore.textContent = 'Pulihkan';
+  const bDiscard = document.createElement('button');
+  bDiscard.textContent = 'Hapus autosave';
+  banner.appendChild(label); banner.appendChild(bRestore); banner.appendChild(bDiscard);
+  statusEl.insertAdjacentElement('beforebegin', banner);
+  bRestore.addEventListener('click', () => {
+    try {
+      allFiles = saved.allFiles;
+      lastZipName = saved.lastZipName || 'game';
+      textListEdits = saved.textListEdits || {};
+      const summary = scanFiles(allFiles);
+      renderScan(summary);
+      $('btnSaveProject').disabled = false;
+      banner.remove();
+      statusEl.textContent = 'Sesi terakhir dipulihkan. File biner/gambar tidak termasuk — upload ulang ZIP/Folder aslinya jika ingin download game lengkap.';
+      log('Autosave dipulihkan: ' + allFiles.length + ' file, ' + textCount + ' teks.');
+    } catch (err) {
+      statusEl.textContent = 'Gagal memulihkan sesi: ' + err.message;
+    }
+  });
+  bDiscard.addEventListener('click', async () => {
+    try { await GT_IDB.del('project'); } catch (e) { }
+    banner.remove();
+    statusEl.textContent = 'Autosave terakhir dihapus.';
+  });
+}
+autosaveInit();
 
 /* ================= FITUR LOG TUGAS (FASE 12) ================= */
 // Isi log lengkap (header info + isi log) untuk di-download / disalin
@@ -6485,7 +6709,8 @@ window.GTGabungan = {
   renpyLogicalLines, renpyScanTl, renpyTlBuild, renpyTlPath,
   renpyPoBuild, renpyPoEscape, poWrap,
   godotParseGdStrings, godotExtractTscn, godotPoBuild, godotPoEscape,
-  captureShouldSkip, captureBuildSrcdoc, captureStoreKey, captureLoadStore, captureSaveStore, captureSeedJson
+  captureShouldSkip, captureBuildSrcdoc, captureStoreKey, captureLoadStore, captureSaveStore, captureSeedJson,
+  tmxNormLang, tmxBaseLang, tmxSelectPair, parseTmxContent, buildProjectData
 };
 </script>
 </body>
