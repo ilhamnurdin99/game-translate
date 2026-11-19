@@ -91,7 +91,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <body>
 <header>
   <h1>🎮 Game Translate — Cek &amp; Terjemah Game</h1>
-  <p>Cek dulu di file mana bahasa game disimpan, centang file yang mau diterjemahkan, lalu download hasilnya sebagai ZIP. Tanpa server, semua proses jalan di perangkatmu. <span style="display:inline-block; margin-top:6px; padding:2px 10px; border:1px solid #38bdf8; border-radius:999px; color:#38bdf8; font-size:12px; font-weight:700">FASE 44</span></p>
+  <p>Cek dulu di file mana bahasa game disimpan, centang file yang mau diterjemahkan, lalu download hasilnya sebagai ZIP. Tanpa server, semua proses jalan di perangkatmu. <span style="display:inline-block; margin-top:6px; padding:2px 10px; border:1px solid #38bdf8; border-radius:999px; color:#38bdf8; font-size:12px; font-weight:700">FASE 45</span></p>
 </header>
 <main>
   <div class="tabs">
@@ -307,7 +307,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Pilih file ZIP/APK, folder, atau banyak file game, lalu klik <b>Periksa Sekarang</b>.</li>
       <li>Centang file yang mau diterjemahkan, lalu klik <b>Terjemahkan yang dipilih</b> atau <b>Terjemahkan Semua</b>. Tunggu sampai selesai (file besar butuh waktu; butuh internet karena terjemahan lewat Google).</li>
       <li>Untuk daftar besar, pakai <b>Daftar Teks</b>: pilih file, klik "Tampilkan Daftar Teks", lalu "Terjemahkan Daftar". Kalau sudah selesai, klik <b>Timpa File Asli</b> — file langsung jadi tanpa internet (hanya memakai terjemahan dari daftar), lalu unduh lewat <b>Download ZIP terjemahan</b>. Kalau daftar lebih besar dari 4000 teks, klik "Simpan Proyek" supaya terjemahan tidak hilang saat halaman di-refresh. Setiap baris menampilkan konteksnya (📍 nama passage + kalimat sebelum/sesudah) — teks yang sama di dua passage bisa diterjemahkan berbeda, dan pencarian juga mencocokkan nama passage.</li>
-      <li><b>Tangkap Teks (FASE 43, diperbaiki FASE 44):</b> mau menangkap teks yang hanya muncul saat bermain (teks dinamis)? Setelah scan, di bagian 5 pilih file game .html lalu klik <b>Mainkan</b> — game jalan di dalam web app. Klik <b>Mulai Tangkap</b> (default mati), lalu mainkan seperti biasa: teks baru langsung ditangkap, diterjemahkan otomatis, dan masuk ke <b>Daftar Teks</b> dengan badge 🔴 Live (saring lewat filter "Live"). Teks yang gagal diterjemahkan dibiarkan kosong supaya aman di-retry; editan manual tidak pernah ditimpa. Setelah selesai, klik <b>Timpa File Asli</b> lalu <b>Download ZIP terjemahan</b>. Batasan: tidak bisa menangkap dari tab lain atau situs online (mis. Worldstate), dan teks canvas hanya ketangkap kalau digambar lewat fillText. Sejak FASE 44, save game SugarCube/Harlowe yang memakai localStorage sudah jalan dan tersimpan per file game — jadi game tidak lagi menampilkan error fatal "All usable storage APIs are missing" di dalam frame.</li>
+      <li><b>Tangkap Teks (FASE 43, diperbaiki FASE 44 dan FASE 45):</b> mau menangkap teks yang hanya muncul saat bermain (teks dinamis)? Setelah scan, di bagian 5 pilih file game .html lalu klik <b>Mainkan</b> — game jalan di dalam web app. Klik <b>Mulai Tangkap</b> (default mati), lalu mainkan seperti biasa: teks baru langsung ditangkap, diterjemahkan otomatis, dan masuk ke <b>Daftar Teks</b> dengan badge 🔴 Live (saring lewat filter "Live"). Teks yang gagal diterjemahkan dibiarkan kosong supaya aman di-retry; editan manual tidak pernah ditimpa. Setelah selesai, klik <b>Timpa File Asli</b> lalu <b>Download ZIP terjemahan</b>. Batasan: tidak bisa menangkap dari tab lain atau situs online (mis. Worldstate), dan teks canvas hanya ketangkap kalau digambar lewat fillText. Sejak FASE 44, save game SugarCube/Harlowe yang memakai localStorage sudah jalan dan tersimpan per file game — jadi game tidak lagi menampilkan error fatal "All usable storage APIs are missing" di dalam frame. Sejak FASE 45, sumber cerita Twine (&lt;tw-storydata&gt;/&lt;tw-passagedata&gt; di Twine 2, #storeArea di Twine 1 seperti Seedship) dan potongan kode (&lt;&lt;widget&gt;&gt;, &lt;&lt;script&gt;&gt;, window., function()…) tidak lagi ditangkap — jadi kode game tidak ikut diterjemahkan dan tidak bisa merusak game saat Timpa File Asli.</li>
       <li>Klik <b>Cek Hasil</b> untuk memeriksa macro, link, dan tag masih utuh. Kalau ada yang rusak, klik <b>Perbaiki</b>.</li>
       <li>Klik <b>Download ZIP terjemahan</b>, lalu ekstrak dan mainkan seperti biasa.</li>
       <li>Untuk game Ren'Py (.rpy): setelah diterjemahkan, klik <b>Download tl/id/ (Ren'Py)</b> — hasilnya folder <b>game/tl/id/</b> (format asli Ren'Py, file asli tidak diubah). Salin folder itu ke folder <b>game/</b> di game Ren'Py kamu, lalu pilih bahasa di Preferences &gt; Language.</li>
@@ -4376,7 +4376,14 @@ $('btnApplyList').addEventListener('click', async () => {
    memori kalau storage asli tidak bisa dipakai (origin opaque di iframe
    sandbox) — SugarCube abort tanpa ini. Isi store localStorage shim
    dilaporkan ke parent lewat postMessage gt-storage dan disimpan per file
-   game (captureStoreKey) supaya save pulih saat frame di-reload. */
+   game (captureStoreKey) supaya save pulih saat frame di-reload.
+   FASE 45: sumber cerita Twine (<tw-storydata>/<tw-passagedata> di Twine 2,
+   #storeArea/[tiddler] di Twine 1 seperti Seedship) tidak lagi ditangkap
+   (isSkippedEl di script suntikan), dan captureShouldSkip
+   menolak potongan kode (<<widget>>/<<script>>/<<stylesheet>>/<<javascript>>,
+   awalan '<<', function(, window., =>, $() — supaya kode tidak ikut
+   diterjemahkan dan tidak merusak game saat Timpa File Asli; sabuk pengaman
+   yang sama ada di captureAddToTextList. */
 const CAPTURE_UI_LABELS = new Set(['save', 'load', 'settings', 'options', 'menu', 'continue', 'back', 'next', 'previous', 'restart', 'quit', 'exit', 'close', 'cancel', 'ok', 'yes', 'no', 'play', 'pause', 'resume', 'skip', 'auto', 'log', 'history', 'gallery', 'extras', 'credits', 'help', 'about', 'inventory', 'status', 'character', 'map', 'journal', 'achievements', 'trophies', 'save game', 'load game', 'new game', 'continue game', 'restart game', 'main menu', 'title screen', 'game over', 'sound on', 'sound off', 'music on', 'music off', 'delete save', 'return to title', 'are you sure', 'confirm', 'apply', 'default', 'reset', 'volume', 'fullscreen', 'language']);
 function captureShouldSkip(s) {
   if (!s) return true;
@@ -4385,6 +4392,14 @@ function captureShouldSkip(s) {
   if (!/[A-Za-z\u00C0-\u024F]/.test(t)) return true;
   if (CAPTURE_UI_LABELS.has(t.toLowerCase())) return true;
   if (looksLikeSelector(t)) return true;
+  // FASE 45: potongan kode / sumber cerita — jangan pernah ditangkap atau
+  // diterjemahkan. Teks hasil render tidak mengandung macro mentah (<<...>>)
+  // atau pola JS ini, jadi aturan ini aman; '{' / '}' saja TIDAK ditolak
+  // (variabel {nama} itu teks valid).
+  const low = t.toLowerCase();
+  if (low.includes('<<widget') || low.includes('<<script') || low.includes('<<stylesheet') || low.includes('<<javascript')) return true;
+  if (t.startsWith('<<')) return true;
+  if (/\bfunction\s*\(/.test(t) || /window\./.test(t) || /=>/.test(t) || /\$\s*\(/.test(t)) return true;
   // looksTranslatable menolak teks >300 karakter (batas scan file) — narasi
   // satu passage bisa lebih panjang, jadi untuk teks panjang hanya tolak
   // yang jelas-jelas kode (kebanyakan tag HTML / jQuery).
@@ -4454,7 +4469,10 @@ const CAPTURE_INJECT_SRC = [
   '    function isSkippedEl(el){',
   '      if(!el || !el.closest) return false;',
   '      if(el.closest("#ui-bar, #ui-bar-body, .ui-bar, nav, #menu, .menu, header, footer")) return true;',
+  '      if(el.closest("tw-storydata, tw-passagedata")) return true;',
+  '      if(el.closest("#storeArea, [tiddler]")) return true;',
   '      var tag = el.tagName || "";',
+  '      if(tag === "TW-STORYDATA" || tag === "TW-PASSAGEDATA") return true;',
   '      if(tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT" || tag === "TEXTAREA" || tag === "CODE" || tag === "PRE" || tag === "SVG") return true;',
   '      return false;',
   '    }',
@@ -4582,6 +4600,9 @@ function captureEnsureList() {
 // ATURAN: kolom terjemahan yang sudah terisi (edit manual / terjemahan
 // lama) TIDAK PERNAH ditimpa — hanya kolom kosong yang diisi.
 function captureAddToTextList(entry) {
+  // FASE 45: sabuk pengaman — baris kode tidak pernah masuk Daftar Teks /
+  // stringRows / textListEdits, walau lolos dari script suntikan.
+  if (!entry || captureShouldSkip(entry.text)) return { idx: -1, isNew: false };
   if (!captureEnsureList()) return { idx: -1, isNew: false };
   const key = unitKey(entry.scope, entry.text);
   let idx = -1;
