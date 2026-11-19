@@ -91,7 +91,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <body>
 <header>
   <h1>🎮 Game Translate — Cek &amp; Terjemah Game</h1>
-  <p>Cek dulu di file mana bahasa game disimpan, centang file yang mau diterjemahkan, lalu download hasilnya sebagai ZIP. Tanpa server, semua proses jalan di perangkatmu. <span style="display:inline-block; margin-top:6px; padding:2px 10px; border:1px solid #38bdf8; border-radius:999px; color:#38bdf8; font-size:12px; font-weight:700">FASE 47</span></p>
+  <p>Cek dulu di file mana bahasa game disimpan, centang file yang mau diterjemahkan, lalu download hasilnya sebagai ZIP. Tanpa server, semua proses jalan di perangkatmu. <span style="display:inline-block; margin-top:6px; padding:2px 10px; border:1px solid #38bdf8; border-radius:999px; color:#38bdf8; font-size:12px; font-weight:700">FASE 48</span></p>
 </header>
 <main>
   <div class="tabs">
@@ -319,6 +319,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Untuk game Godot (source .gd/.tscn/.tres): klik <b>Buat .po (Godot)</b> — hasilnya file <b>id.po</b> berisi semua teks dari <b>tr()</b> dan properti text di scene (msgstr masih kosong). Terjemahkan file .po itu (upload lagi ke web app, atau pakai Poedit), lalu daftarkan di Godot: Project Settings &gt; Localization &gt; Translations.</li>
       <li>Terjemahan berjalan <b>paralel (3 batch sekaligus)</b> supaya daftar besar lebih cepat — matikan lewat checkbox "Terjemahan paralel" di Pengaturan Lanjutan kalau Google mulai menolak (429). Macro Twine yang hanya mencetak teks (print, button, link, dialog, <b>&lt;&lt;= ...&gt;&gt;</b>, &lt;&lt;- ...&gt;&gt;, linkappend, option) ikut diterjemahkan; macro kode (set, if, widget, dll.) dilewati. Isi <b>&lt;&lt;script&gt;&gt;</b> dan <b>&lt;&lt;silent&gt;&gt;</b> (kode, bukan teks tampil) juga dilewati. Blok verbatim <b>{{{ ... }}}</b> (biasanya CSS/JS/contoh kode) dan passage <b>StoryInit</b> serta <b>StoryIncludes</b> (FASE 47) tidak pernah diterjemahkan — begitu juga di jalur non-Twine dan Tangkap Teks (FASE 47: teks mengandung <b>{{{</b> tidak ditangkap). Passage StoryMenu/StoryCaption/dll. tetap diterjemahkan karena tampil ke pemain.</li>
       <li>Terjemah AI per scene (FASE 47): kalau provider custom aktif, centang <b>"Terjemah AI per scene (FASE 47)"</b> di Pengaturan Lanjutan (default aktif) — "Terjemahkan Daftar" mengirim satu scene (satu passage) sekaligus ke provider custom, dengan glosarium nama tokoh yang dibuat otomatis dari scene itu (nama yang muncul berulang, mis. Sofia/Katya, dipertahankan apa adanya). Baris yang gagal di scene (kosong, halusinasi, atau variabel hilang) otomatis dicoba ulang lewat mesin gratis (Google/Dict/Edge/Chrome/MyMemory). Kalau provider custom mati, checkbox ini tidak berpengaruh dan jalur lama dipakai.</li>
+      <li>Filter &amp; lewati scan (FASE 48, ala GameGlot): (1) label macro / string JS yang mirip teks Inggris (skor kata fungsi Inggris ≥ 0,15, mis. "What is this") ikut masuk Daftar Teks meski aturan lama menolaknya — tapi tidak ada teks yang tadinya masuk jadi hilang karenanya; (2) teks yang jelas bukan teks (kosong, &gt;8.000 karakter, karakter kontrol / UTF-8 rusak, path res:// atau user://) tidak masuk antrean terjemah; (3) passage <b>StoryData</b> dan <b>StorySettings</b> serta passage bertag <b>annotation / header-css / twine.image / twine.private</b> dilewati seperti passage kode lainnya. StoryTitle, StoryMenu, dan StoryCaption tetap diterjemahkan karena tampil ke pemain.</li>
       <li>Punya API key sendiri (Groq, OpenRouter, DeepSeek, dll.)? Aktifkan <b>provider custom</b> di Pengaturan Lanjutan — isi alamat API, key, dan nama model, lalu klik "Uji Provider". Provider custom dipakai pertama sebelum mesin gratis; key hanya tersimpan di browser ini.</li>
       <li>Kalau hasil terjemahan kehilangan variabel (mis. {gold}, %s, [item]), web app <b>memperbaikinya otomatis</b>: hanya bagian kalimatnya yang diterjemahkan ulang, variabel aslinya disambung kembali (ala Fallowborn). Kalau Google gagal membaca satu batch, dicoba lagi dengan format marker sebelum pindah ke mesin lain.</li>
       <li>Penjaga anti-halusinasi (FASE 31): kalau mesin mengembalikan string sampah yang sama untuk banyak teks berbeda, atau class CSS diterjemahkan, hasilnya <b>ditolak dan tidak disimpan</b> — teksnya ditandai gagal supaya bisa diulang lewat mesin lain, bukan merusak game.</li>
@@ -460,6 +461,101 @@ function looksTranslatable(s) {
   // Kalau >70% isi string (setelah decode) adalah tag HTML, tolak.
   if (tagLen > 0 && tagLen / dt.length > 0.7) return false;
   return true;
+}
+/* ================ FASE 48: skor teks Inggris + filter kualitas ala GameGlot ================
+   Dari bongkaran binary GameGlot 4.0.3 (twEnglishScore / twLabelLike /
+   twProseArg / LooksLikeText di twinetext.go + extract.go, lihat
+   GameGlot-HTML-Deep-Dive.md). Dipakai HANYA sebagai penerimaan/filter
+   TAMBAHAN di jalur scan — tidak pernah menolak apa pun yang
+   looksTranslatable terima sekarang, dan aturan "label harus multi-kata"
+   TIDAK diterapkan ke looksTranslatable secara umum (FASE 33: kata
+   tunggal ikut diterjemahkan). */
+const GT_ENGLISH_FUNCTION_WORDS = new Set(['the', 'you', 'your', 'an', 'to', 'and', 'of', 'is', 'it', 'that', 'he', 'she', 'with', 'for', 'on', 'my', 'me', 'this', 'what', 'are', 'was', 'be', 'have', 'not', 'at', 'but', 'his', 'her', 'we', 'they', 'can', 'will', 'just', 'if']);
+/* Fraksi kata yang ada di daftar 34 kata fungsi Inggris (GameGlot:
+   kata = run huruf a-z dari teks yang sudah di-lowercase; apostrof,
+   angka, spasi, tanda baca, dan huruf non-ASCII semuanya memisah kata —
+   "don't" jadi "don"+"t", "café" jadi "caf". 0 bila tidak ada kata. */
+function englishScore(s) {
+  if (!s) return 0;
+  const words = s.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  if (!words.length) return 0;
+  let hits = 0;
+  for (const w of words) if (GT_ENGLISH_FUNCTION_WORDS.has(w)) hits++;
+  return hits / words.length;
+}
+/* True bila teks mengandung kata 2+ huruf (GameGlot twHasWords: regex
+   \p{L}, placeholder {angka} dihapus dulu). */
+function twHasWords(s) {
+  if (!s) return false;
+  return /\p{L}{2,}/u.test(s.replace(/\{\s*\d+\s*\}/g, ''));
+}
+/* Markup gambar ala GameGlot (regex 0xf43c00): [img...]...[/img] atau
+   {image=...} — bukan label/teks tampil. */
+const GT_IMAGE_MARKUP_RE = /\[img[^\]]*\][^\[]*\[\/img\]|\{image=[^{}]*\}/;
+/* Jalan pintas prosa ala GameGlot twProseArg: ≥3 spasi langsung true;
+   kalau tidak, true bila mengandung spasi DAN diakhiri tanda akhir
+   kalimat (. ! ? … " »). Bukan prosa bila <2 karakter, tanpa kata,
+   mengandung / { }, atau markup gambar. */
+function twProseArg(s) {
+  const t = (s || '').trim();
+  if (t.length < 2) return false;
+  if (!twHasWords(t)) return false;
+  if (/[/{}]/.test(t)) return false;
+  if (GT_IMAGE_MARKUP_RE.test(t)) return false;
+  if ((t.match(/ /g) || []).length >= 3) return true;
+  if (!t.includes(' ')) return false;
+  return /[.!?…"\u00BB]$/.test(t);
+}
+/* True bila string kutip "mirip label" ala GameGlot twLabelLike: prosa
+   jelas langsung true; kalau tidak, harus punya spasi, bebas karakter
+   kode (/ _ { }), mengandung kata, bukan markup gambar, dan skor
+   Inggris ≥ 0,15. */
+function twLabelLike(s) {
+  const t = (s || '').trim();
+  if (twProseArg(t)) return true;
+  if (!t.includes(' ')) return false;
+  if (/[/_{}]/.test(t)) return false;
+  if (!twHasWords(t)) return false;
+  if (GT_IMAGE_MARKUP_RE.test(t)) return false;
+  return englishScore(t) >= 0.15;
+}
+/* Filter kualitas ala GameGlot LooksLikeText — 0 = bukan teks,
+   1 = lemah/meragukan, 2 = kuat. Hanya aturan yang TERVERIFIKASI dari
+   disassembly yang dipakai di sini; ~18 cek regex GameGlot TIDAK bisa
+   dipastikan polanya, jadi tidak ditiru — teks yang tidak lolos aturan
+   kuat mendapat 1, bukan 0 (tidak dibuang). */
+function looksLikeText(s) {
+  if (!s) return 0;
+  const t = s.trim();
+  if (!t) return 0;
+  const runes = [...t];
+  if (runes.length - 2 > 7998) return 0; // maks ~8.000 rune
+  if (t.includes('res://') || t.includes('user://')) return 0;
+  for (const ch of runes) {
+    const cp = ch.codePointAt(0);
+    if (cp === 0xFFFD) return 0; // U+FFFD = UTF-8 rusak
+    // Karakter kontrol — kecuali \n \t \r yang memang pemisah di teks.
+    if ((cp < 0x20 && cp !== 0x0A && cp !== 0x09 && cp !== 0x0D) || cp === 0x7F) return 0;
+  }
+  const underscores = (t.match(/_/g) || []).length;
+  const spaces = (t.match(/ /g) || []).length;
+  if (underscores < 2 && spaces > 1) return 2;
+  let letters = 0;
+  for (const ch of runes) if (/\p{L}/u.test(ch)) letters++;
+  // Ambang akhir GameGlot tidak bisa dipastikan persis dari disassembly
+  // (bacaan paling masuk akal: huruf ≥ rune/3); dipakai sebagai perkiraan.
+  if (letters * 3 >= runes.length) return 2;
+  return 1;
+}
+/* Gerbang penerimaan scan FASE 48 — dipakai argumen macro ber-tanda-kutip
+   (pushTwineSegments) dan string ber-tanda-kutip dari JS
+   (extractStringLiterals): looksTranslatable ATAU label-like (skor
+   Inggris ala GameGlot), DAN lolos filter kualitas looksLikeText
+   (skor 0 = bukan teks, tidak masuk antrean). */
+function scanAccepts(s) {
+  if (!s) return false;
+  if (!looksTranslatable(s) && !twLabelLike(s)) return false;
+  return looksLikeText(s) > 0;
 }
 // True bila string terlihat seperti selector CSS, bukan teks untuk pemain.
 function looksLikeSelector(s) {
@@ -665,7 +761,10 @@ function scanJSStrings(code) {
 function extractStringLiterals(code) {
   const out = [];
   for (const r of scanJSStrings(code)) {
-    if (r.text && looksTranslatable(r.text)) out.push(r.text.trim().replace(/\s+/g, ' '));
+    // FASE 48: gerbang scan — string JS yang mirip label Inggris
+    // (twLabelLike) ikut masuk meski looksTranslatable menolaknya;
+    // teks skor 0 (bukan teks) tidak masuk.
+    if (r.text && scanAccepts(r.text)) out.push(r.text.trim().replace(/\s+/g, ' '));
   }
   return dedupeKeepOrder(out);
 }
@@ -709,14 +808,20 @@ function isCodeTags(attrs) {
   // yang tidak pernah ditampilkan) juga dikecualikan dari scan/terjemah.
   // FASE 47: StoryIncludes ditambahkan — isinya daftar <<include>> passage
   // lain (kode/konfigurasi, bukan teks tampil), sama seperti StoryInit.
-  // SENGAJA tidak dilewati: StoryMenu, StoryCaption, StorySubtitle,
-  // StoryAuthor, StoryBanner, StoryFooter, PassageHeader, PassageFooter —
-  // itu teks yang tampil ke pemain dan HARUS tetap diterjemahkan.
-  if (/\b(name|tiddler)\s*=\s*["'](StoryInit|StoryIncludes)["']/i.test(attrs || '')) return true;
+  // FASE 48: StoryData + StorySettings ditambahkan, begitu juga tag
+  // annotation / header-css / twine.image / twine.private — melengkapi
+  // daftar lewati GameGlot (twSkipPassage). Daftar ini HARUS sama dengan
+  // isCodePassage di jalur terjemah (GT.collectItems).
+  // SENGAJA tidak dilewati: StoryTitle (web app menerjemahkannya — beda
+  // dengan GameGlot, dan itu keputusan sadar), StoryMenu, StoryCaption,
+  // StorySubtitle, StoryAuthor, StoryBanner, StoryFooter, PassageHeader,
+  // PassageFooter — itu teks yang tampil ke pemain dan HARUS tetap
+  // diterjemahkan.
+  if (/\b(name|tiddler)\s*=\s*["'](StoryInit|StoryIncludes|StoryData|StorySettings)["']/i.test(attrs || '')) return true;
   const m = /tags\s*=\s*["']([^"']*)["']/i.exec(attrs || '');
   if (!m) return false;
   const tags = m[1].split(/\s+/);
-  return tags.includes('widget') || tags.includes('stylesheet') || tags.includes('script');
+  return tags.includes('widget') || tags.includes('stylesheet') || tags.includes('script') || tags.includes('annotation') || tags.includes('header-css') || tags.includes('twine.image') || tags.includes('twine.private');
 }
 /* FASE 34: id script library/mesin Twine (jQuery, SugarCube, Harlowe,
    Chapbook) — string di dalamnya bukan teks pemain; menerjemahkannya
@@ -757,7 +862,8 @@ function extractFromHTMLData(text, fileName) {
     // twitter:description) — meta lain bukan teks pemain, jadi jangan dihitung.
     if (!/\b(name|property)\s*=\s*["'](description|og:title|og:description|twitter:title|twitter:description)["']/i.test(tag)) continue;
     const cm = /content\s*=\s*["']([^"']+)["']/i.exec(tag);
-    if (cm && looksTranslatable(cm[1])) { out.push(cm[1]); addRow(cm[1], fScope); }
+    // FASE 48: filter kualitas — teks skor 0 (bukan teks) tidak masuk.
+    if (cm && looksTranslatable(cm[1]) && looksLikeText(cm[1]) > 0) { out.push(cm[1]); addRow(cm[1], fScope); }
   }
   const cleaned = text
     // Buang isi passage kode (widget/stylesheet/script) dari sumber teks,
@@ -773,7 +879,8 @@ function extractFromHTMLData(text, fileName) {
   // dipakai twineSegments.
   const cleanedNoVerbatim = splitVerbatim(cleaned).filter((c) => !c.verbatim).map((c) => c.text).join('');
   const re4 = /\b(title|alt|placeholder|aria-label)="([^"]+)"/gi;
-  while ((m = re4.exec(cleanedNoVerbatim))) if (looksTranslatable(m[2])) { out.push(m[2]); addRow(m[2], fScope); }
+  // FASE 48: filter kualitas — teks skor 0 (bukan teks) tidak masuk.
+  while ((m = re4.exec(cleanedNoVerbatim))) if (looksTranslatable(m[2]) && looksLikeText(m[2]) > 0) { out.push(m[2]); addRow(m[2], fScope); }
   // Pemecah baris teks biasa (dipakai dua kali — lihat komentar FASE 36 di atas).
   const eachPlainLine = (src, cb) => {
     src.replace(/<[^>]+>/g, '\n').split('\n').forEach((line) => {
@@ -794,7 +901,11 @@ function extractFromHTMLData(text, fileName) {
         // (twineSegments memisah gaya dari isi) — jangan tambahkan lagi
         // sebagai satu entri mentah (mis. "@@font-size:xx-large;Judul@@").
         if (t.includes('@@')) return;
-        if (looksTranslatable(t)) cb(t);
+        // FASE 48: filter kualitas — teks skor 0 (bukan teks) tidak masuk.
+        // (Di sini TIDAK dipakai twLabelLike: baris biasa bukan argumen
+        // macro kutip / string JS — penerimaan tambahan FASE 48 hanya
+        // untuk dua jalur itu.)
+        if (looksTranslatable(t) && looksLikeText(t) > 0) cb(t);
       });
     });
   };
@@ -1289,7 +1400,11 @@ function pushTwineSegments(content, out, rows, scope) {
     if (!seg.translatable) continue;
     const t = trimEdgeNbsp(seg.text.trim()).replace(/\s+/g, ' ');
     if (t.length < 2 || !/[A-Za-z\u00C0-\u024F]/.test(t)) continue;
-    if (t.length <= 300 && !looksTranslatable(t)) continue;
+    // FASE 48: gerbang scan — label macro yang looksTranslatable tolak
+    // tapi mirip label Inggris (twLabelLike) tetap masuk; teks skor 0
+    // (bukan teks) tidak masuk. Teks cerita >300 karakter tetap masuk
+    // seperti dulu, kecuali skor 0 (mis. >8.000 rune / UTF-8 rusak).
+    if (t.length <= 300 ? !scanAccepts(t) : looksLikeText(t) === 0) continue;
     kept.push({ text: t, linkLabel: !!seg.linkLabel });
   }
   for (let i = 0; i < kept.length; i++) {
@@ -1767,11 +1882,18 @@ const GT = (() => {
     if (!p) return false;
     // FASE 32: StoryInit tidak pernah ditampilkan — jangan diterjemahkan.
     // FASE 47: StoryIncludes juga (daftar <<include>>, kode/konfigurasi).
-    // StoryMenu/StoryCaption/dll. SENGAJA tidak dilewati — teks tampil.
+    // FASE 48: StoryData + StorySettings juga, dan tag annotation /
+    // header-css / twine.image / twine.private — melengkapi daftar lewati
+    // GameGlot (twSkipPassage). Daftar ini HARUS sama dengan isCodeTags
+    // di jalur scan. StoryTitle SENGAJA tidak dilewati (web app
+    // menerjemahkannya, beda dengan GameGlot); StoryMenu/StoryCaption/
+    // dll. juga tidak — teks tampil.
     if (p.getAttribute('name') === 'StoryInit' || p.getAttribute('tiddler') === 'StoryInit' ||
-        p.getAttribute('name') === 'StoryIncludes' || p.getAttribute('tiddler') === 'StoryIncludes') return true;
+        p.getAttribute('name') === 'StoryIncludes' || p.getAttribute('tiddler') === 'StoryIncludes' ||
+        p.getAttribute('name') === 'StoryData' || p.getAttribute('tiddler') === 'StoryData' ||
+        p.getAttribute('name') === 'StorySettings' || p.getAttribute('tiddler') === 'StorySettings') return true;
     const tags = (p.getAttribute('tags') || '').split(/\s+/);
-    return tags.includes('widget') || tags.includes('stylesheet') || tags.includes('script');
+    return tags.includes('widget') || tags.includes('stylesheet') || tags.includes('script') || tags.includes('annotation') || tags.includes('header-css') || tags.includes('twine.image') || tags.includes('twine.private');
   }
   function collectItems(doc, opts) {
     const items = [];
@@ -2670,7 +2792,7 @@ const GT = (() => {
 
     return { html: serializeDoc(doc), stats: { totalItems: items.length, uniqueTexts: uniqTexts.length, translated: applyInfo.applied + titleApplied, fromCache: applyInfo.cached + titleCached, failed: failedTexts.length, failedTexts }, failedTexts, result };
   }
-  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, customBatch, customSceneBatch, buildSceneGlossary, setCustomProvider, parseCustomResponse, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, cacheKeyScoped, cacheLookup, unitKey, saveCache, cacheCap: CACHE_CAP, fuzzyThreshold: FUZZY_THRESHOLD, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel, isHallucinatedOutput, isCssClassList, isDangerousMacro, macroQuoteTranslatable, codeContainerEnd };
+  return { collectItems, collectUnits, twineSegments, parseGoogleResponse, parseDictResponse, googleDictBatch, googleBatchMarkers, edgeBatch, customBatch, customSceneBatch, buildSceneGlossary, setCustomProvider, parseCustomResponse, translateTexts, applyTranslations, serializeDoc, translateFile, cache, cacheKey, cacheKeyScoped, cacheLookup, unitKey, saveCache, cacheCap: CACHE_CAP, fuzzyThreshold: FUZZY_THRESHOLD, glossary: Object.assign({}, GLOSSARY_GENERAL, GLOSSARY_GAME), glossaryGet, setUseGameGlossary, setParallel, isHallucinatedOutput, isCssClassList, isDangerousMacro, macroQuoteTranslatable, codeContainerEnd, englishScore, twLabelLike, looksLikeText };
 })();
 window.GT = GT;
 
@@ -6347,8 +6469,8 @@ function renpyPoBuild(files, lang) {
 }
 
 window.GTGabungan = {
-  looksTranslatable, detectLang, isLangFile, analyzeFile, scanFiles,
-  extractFromHTML, extractFromHTMLData, extractFromJSON, extractFromRpy, extractFromPo, extractFromCsv, extractFromXml,
+  looksTranslatable, englishScore, twLabelLike, twProseArg, looksLikeText, scanAccepts, detectLang, isLangFile, analyzeFile, scanFiles,
+  extractFromHTML, extractFromHTMLData, extractFromJSON, extractFromRpy, extractFromPo, extractFromCsv, extractFromXml, extractStringLiterals,
   extractQuotedRanges, isCodeContextString, escapeForQuote, protectSegments, translateSegment, getMissingVars, decodeHTMLEntities, encodeHTMLEntities,
   splitMacroToken, splitMacroWikiLink, macroQuoteTranslatable, isDangerousMacro, codeContainerEnd,
   sugarcubeLinkQuoteDead, parseTwineLink, deadLinkOrdinals, twinePassages, isSugarCubeFile,
