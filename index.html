@@ -91,7 +91,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <body>
 <header>
   <h1>🎮 Game Translate — Cek &amp; Terjemah Game</h1>
-  <p>Cek dulu di file mana bahasa game disimpan, centang file yang mau diterjemahkan, lalu download hasilnya sebagai ZIP. Tanpa server, semua proses jalan di perangkatmu.</p>
+  <p>Cek dulu di file mana bahasa game disimpan, centang file yang mau diterjemahkan, lalu download hasilnya sebagai ZIP. Tanpa server, semua proses jalan di perangkatmu. <span style="display:inline-block; margin-top:6px; padding:2px 10px; border:1px solid #38bdf8; border-radius:999px; color:#38bdf8; font-size:12px; font-weight:700">FASE 43</span></p>
 </header>
 <main>
   <div class="tabs">
@@ -255,6 +255,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         <option value="translated">Sudah Diterjemahkan</option>
         <option value="failed">Hanya yang Gagal (Variabel Hilang)</option>
         <option value="qa">Bermasalah QA (FASE 38)</option>
+        <option value="live">🔴 Live (baru ditangkap)</option>
       </select>
     </div>
     <div id="textListWrap" style="margin-top:10px; max-height:420px; overflow:auto; border:1px solid #e2e8f0; border-radius:8px"></div>
@@ -278,12 +279,35 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <div id="textListStatus" class="muted" style="margin-top:8px">Pilih file lalu klik "Tampilkan Daftar Teks".</div>
   </section>
 
+  <section class="card" id="captureCard" style="display:none">
+    <h2>5. Tangkap Teks (mode seperti Textractor)</h2>
+    <p class="hint">Mainkan game di dalam web app ini — teks yang muncul saat bermain ditangkap otomatis, diterjemahkan, dan langsung masuk ke Daftar Teks (baris baru bertanda 🔴 Live). Setelah selesai, klik "Timpa File Asli" di Daftar Teks lalu "Download ZIP terjemahan" seperti biasa.</p>
+    <div class="warn">⚠️ <b>Batasan yang perlu diketahui:</b> game harus dimainkan dari dalam web app ini — tidak bisa menangkap teks dari game yang dibuka di tab lain, atau dari situs online seperti Worldstate. Game canvas/WebGL murni hanya ketangkap kalau teksnya digambar lewat <b>fillText</b>; teks yang digambar sebagai gambar tidak bisa ditangkap. Game jalan di dalam frame yang di-sandbox (kode game tidak bisa membaca data web app ini, termasuk API key) — akibatnya save game yang memakai localStorage bisa tidak jalan di sebagian game, dan sebagian game bisa rewel soal fullscreen di dalam frame.</div>
+    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+      <label for="captureFile"><b>File game (.html):</b></label>
+      <select id="captureFile" style="max-width:50%"></select>
+      <button id="btnCapturePlay">▶ Mainkan</button>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+      <button id="btnCaptureToggle" disabled>▶ Mulai Tangkap (mati)</button>
+      <button id="btnCapturePause" disabled style="background:#475569;color:#fff">⏸ Jeda</button>
+      <button id="btnCaptureCopy" style="background:#3b82f6;color:#fff">📋 Salin Log</button>
+      <button id="btnCaptureSaveTxt" style="background:#0f766e;color:#fff">⬇ Simpan Log (.txt)</button>
+      <button id="btnCaptureClear" style="background:#b91c1c;color:#fff">🗑 Hapus Log</button>
+      <label class="check" style="margin:0"><input type="checkbox" id="captureOnlyNew"> Hanya yang baru (belum ada di Daftar Teks)</label>
+    </div>
+    <iframe id="captureFrame" title="Game yang dimainkan" style="width:100%; height:520px; margin-top:10px; border:1px solid #334155; border-radius:8px; background:#fff" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>
+    <div id="captureStatus" class="muted" style="margin-top:8px">Pilih file game lalu klik "Mainkan". Tangkapan default MATI — klik "Mulai Tangkap" kalau sudah siap bermain.</div>
+    <div id="captureLog" style="margin-top:10px; max-height:320px; overflow:auto; border:1px solid #334155; border-radius:8px; padding:8px; font-size:13px"></div>
+  </section>
+
   <section class="card">
     <h2>Cara pakai</h2>
     <ol class="howto">
       <li>Pilih file ZIP/APK, folder, atau banyak file game, lalu klik <b>Periksa Sekarang</b>.</li>
       <li>Centang file yang mau diterjemahkan, lalu klik <b>Terjemahkan yang dipilih</b> atau <b>Terjemahkan Semua</b>. Tunggu sampai selesai (file besar butuh waktu; butuh internet karena terjemahan lewat Google).</li>
       <li>Untuk daftar besar, pakai <b>Daftar Teks</b>: pilih file, klik "Tampilkan Daftar Teks", lalu "Terjemahkan Daftar". Kalau sudah selesai, klik <b>Timpa File Asli</b> — file langsung jadi tanpa internet (hanya memakai terjemahan dari daftar), lalu unduh lewat <b>Download ZIP terjemahan</b>. Kalau daftar lebih besar dari 4000 teks, klik "Simpan Proyek" supaya terjemahan tidak hilang saat halaman di-refresh. Setiap baris menampilkan konteksnya (📍 nama passage + kalimat sebelum/sesudah) — teks yang sama di dua passage bisa diterjemahkan berbeda, dan pencarian juga mencocokkan nama passage.</li>
+      <li><b>Tangkap Teks (FASE 43):</b> mau menangkap teks yang hanya muncul saat bermain (teks dinamis)? Setelah scan, di bagian 5 pilih file game .html lalu klik <b>Mainkan</b> — game jalan di dalam web app. Klik <b>Mulai Tangkap</b> (default mati), lalu mainkan seperti biasa: teks baru langsung ditangkap, diterjemahkan otomatis, dan masuk ke <b>Daftar Teks</b> dengan badge 🔴 Live (saring lewat filter "Live"). Teks yang gagal diterjemahkan dibiarkan kosong supaya aman di-retry; editan manual tidak pernah ditimpa. Setelah selesai, klik <b>Timpa File Asli</b> lalu <b>Download ZIP terjemahan</b>. Batasan: tidak bisa menangkap dari tab lain atau situs online (mis. Worldstate), dan teks canvas hanya ketangkap kalau digambar lewat fillText.</li>
       <li>Klik <b>Cek Hasil</b> untuk memeriksa macro, link, dan tag masih utuh. Kalau ada yang rusak, klik <b>Perbaiki</b>.</li>
       <li>Klik <b>Download ZIP terjemahan</b>, lalu ekstrak dan mainkan seperti biasa.</li>
       <li>Untuk game Ren'Py (.rpy): setelah diterjemahkan, klik <b>Download tl/id/ (Ren'Py)</b> — hasilnya folder <b>game/tl/id/</b> (format asli Ren'Py, file asli tidak diubah). Salin folder itu ke folder <b>game/</b> di game Ren'Py kamu, lalu pilih bahasa di Preferences &gt; Language.</li>
@@ -3775,6 +3799,11 @@ function renderScan(summary) {
   tlSel.innerHTML = supported.map((f) => '<option value="' + esc(f.path) + '">' + esc(f.path) + ' (' + f.count + ' teks)</option>').join('');
   $('textListCard').style.display = supported.length ? 'block' : 'none';
   if (!supported.length) { $('textListWrap').innerHTML = ''; $('btnTranslateList').disabled = true; $('btnApplyList').disabled = true; }
+  // FASE 43: isi dropdown Tangkap Teks dengan file game HTML.
+  const capSel = $('captureFile');
+  const htmlFiles = allFiles.filter((f) => f.status === 'didukung' && f.count > 0 && (f.ext === 'html' || f.ext === 'htm'));
+  if (capSel) capSel.innerHTML = htmlFiles.map((f) => '<option value="' + esc(f.path) + '">' + esc(f.path) + ' (' + f.count + ' teks)</option>').join('');
+  $('captureCard').style.display = htmlFiles.length ? 'block' : 'none';
 }
 btnCheck.addEventListener('click', async () => {
   const zipFile = zipInput.files[0];
@@ -4067,6 +4096,9 @@ function renderTextList() {
       matchStatus = !!transText.trim();
     } else if (statusFilter === 'failed') {
       matchStatus = !!transText.trim() && getMissingVars(row.text, transText).length > 0;
+    } else if (statusFilter === 'live') {
+      // FASE 43: hanya baris yang ditangkap saat main (badge 🔴 Live).
+      matchStatus = !!row.live;
     } else if (statusFilter === 'qa') {
       // FASE 38: hanya baris dengan masalah QA (termasuk saran fuzzy
       // di bawah 95% yang perlu ditinjau).
@@ -4117,8 +4149,11 @@ function renderTextList() {
       const qaTitle = qaIssues.map((x) => (QA_CODE_LABELS[x.code] || x.code) + ': ' + x.detail).join('; ').replace(/"/g, '&quot;');
       badgeHtml += '<div style="color:#dc2626; font-size:11px; margin-top:4px" title="' + qaTitle + '">⚠ QA: ' + qaIssues.map((x) => QA_CODE_LABELS[x.code] || x.code).join(', ') + '</div>';
     }
+    // FASE 43: badge untuk baris yang ditangkap saat main (Live).
+    let liveHtml = '';
+    if (row.live) liveHtml = '<div style="color:#dc2626; font-size:11px; margin-top:4px">🔴 Live — ditangkap saat main</div>';
     html += '<tr style="border-top:1px solid #e2e8f0"><td style="text-align:right; padding:6px; color:#64748b; vertical-align:top">' + (i + 1) + '</td>'
-      + '<td style="padding:6px; vertical-align:top; white-space:pre-wrap; word-break:break-word">' + esc(s) + ctxHtml + '</td>'
+      + '<td style="padding:6px; vertical-align:top; white-space:pre-wrap; word-break:break-word">' + esc(s) + ctxHtml + liveHtml + '</td>'
       + '<td style="padding:6px; vertical-align:top"><textarea class="tl-input" data-idx="' + i + '" rows="2" style="width:100%; box-sizing:border-box; font:inherit; resize:vertical; ' + borderStyle + '" placeholder="— belum diterjemahkan —" ' + titleAttr + '>' + esc(transText) + '</textarea>' + badgeHtml + '</td></tr>';
   }
   html += '</tbody></table>';
@@ -4327,6 +4362,337 @@ $('btnApplyList').addEventListener('click', async () => {
   }
   $('btnApplyList').disabled = false; $('btnTranslateList').disabled = false;
 });
+/* ================= FASE 43: Tangkap Teks (Textractor untuk game HTML) ================= */
+/* Game dimainkan di dalam iframe (srcdoc + sandbox TANPA allow-same-origin,
+   supaya kode game tidak bisa membaca localStorage web app ini, termasuk
+   API key provider custom — postMessage tetap jalan). Script tangkap
+   disuntikkan di awal <head> game supaya sadapan fillText terpasang sebelum
+   game menggambar apa pun. Tangkapan default MATI (pilihan Ilham): tidak
+   ada teks yang direkam sampai tombol "Mulai Tangkap" ditekan. Terjemahan
+   memakai GT.translateTexts yang sudah ada (glosarium + cache + mesin yang
+   sama, batch 10 teks / 1000 karakter / 300ms dari FASE 23 — TIDAK diubah);
+   hasil gagal TIDAK PERNAH masuk cache (aturan lama translateTexts). */
+const CAPTURE_UI_LABELS = new Set(['save', 'load', 'settings', 'options', 'menu', 'continue', 'back', 'next', 'previous', 'restart', 'quit', 'exit', 'close', 'cancel', 'ok', 'yes', 'no', 'play', 'pause', 'resume', 'skip', 'auto', 'log', 'history', 'gallery', 'extras', 'credits', 'help', 'about', 'inventory', 'status', 'character', 'map', 'journal', 'achievements', 'trophies', 'save game', 'load game', 'new game', 'continue game', 'restart game', 'main menu', 'title screen', 'game over', 'sound on', 'sound off', 'music on', 'music off', 'delete save', 'return to title', 'are you sure', 'confirm', 'apply', 'default', 'reset', 'volume', 'fullscreen', 'language']);
+function captureShouldSkip(s) {
+  if (!s) return true;
+  const t = String(s).trim();
+  if (t.length < 2) return true;
+  if (!/[A-Za-z\u00C0-\u024F]/.test(t)) return true;
+  if (CAPTURE_UI_LABELS.has(t.toLowerCase())) return true;
+  if (looksLikeSelector(t)) return true;
+  // looksTranslatable menolak teks >300 karakter (batas scan file) — narasi
+  // satu passage bisa lebih panjang, jadi untuk teks panjang hanya tolak
+  // yang jelas-jelas kode (kebanyakan tag HTML / jQuery).
+  if (t.length <= 300) return !looksTranslatable(t);
+  const dec = decodeHTMLEntities(t).text;
+  const tagLen = (dec.match(/<\/?[a-zA-Z][^>]*>/g) || []).reduce((a, m) => a + m.length, 0);
+  if (tagLen > 0 && tagLen / dec.length > 0.7) return true;
+  if (/\$\s*\(/.test(t)) return true;
+  return false;
+}
+// Script yang disuntikkan ke game. Ditulis sebagai array baris supaya tidak
+// ada literal penutup-script atau "${" di dalam file ini (keduanya akan
+// merusak <script> web app). Di dalam game: MutationObserver menangkap teks
+// baru, fillText disadap untuk teks canvas, nama passage dibaca dari
+// .passage[data-passage] (SugarCube) / tw-passage (Harlowe). Hasil dikirim
+// ke parent lewat postMessage; parent yang memutuskan direkam atau tidak.
+const CAPTURE_INJECT_SRC = [
+  '(function(){',
+  '  try{',
+  '    window.__GT_CAPTURE_ON__ = false;',
+  '    var seen = {};',
+  '    function passageName(node){',
+  '      var el = node && node.nodeType === 1 ? node : (node && node.parentElement ? node.parentElement : null);',
+  '      var p = null;',
+  '      if(el && el.closest){ p = el.closest(".passage[data-passage], [data-passage], tw-passage"); }',
+  '      if(p){ return p.getAttribute("data-passage") || p.getAttribute("name") || ""; }',
+  '      var all = document.querySelectorAll(".passage[data-passage]");',
+  '      for(var i=0;i<all.length;i++){ var cs = window.getComputedStyle ? window.getComputedStyle(all[i]) : null; if(!cs || cs.display !== "none"){ return all[i].getAttribute("data-passage") || ""; } }',
+  '      var tp = document.querySelector("tw-passage");',
+  '      if(tp){ return tp.getAttribute("name") || "Harlowe"; }',
+  '      return "";',
+  '    }',
+  '    function send(text, passage){',
+  '      if(!window.__GT_CAPTURE_ON__) return;',
+  '      var key = passage + "\\u0000" + text;',
+  '      if(seen[key]) return;',
+  '      seen[key] = 1;',
+  '      try{ window.parent.postMessage({type:"gt-capture", text:text, passage:passage}, "*"); }catch(e){}',
+  '    }',
+  '    function isSkippedEl(el){',
+  '      if(!el || !el.closest) return false;',
+  '      if(el.closest("#ui-bar, #ui-bar-body, .ui-bar, nav, #menu, .menu, header, footer")) return true;',
+  '      var tag = el.tagName || "";',
+  '      if(tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT" || tag === "TEXTAREA" || tag === "CODE" || tag === "PRE" || tag === "SVG") return true;',
+  '      return false;',
+  '    }',
+  '    function collectText(root){',
+  '      if(!root) return;',
+  '      var found = {};',
+  '      var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);',
+  '      var n;',
+  '      while((n = walker.nextNode())){',
+  '        var t = (n.nodeValue || "").replace(/\\s+/g, " ").trim();',
+  '        if(t.length < 2) continue;',
+  '        if(isSkippedEl(n.parentElement)) continue;',
+  '        if(found[t]) continue;',
+  '        found[t] = 1;',
+  '        send(t, passageName(n));',
+  '      }',
+  '    }',
+  '    function collectMutations(muts){',
+  '      for(var i=0;i<muts.length;i++){',
+  '        var m = muts[i];',
+  '        if(m.type === "characterData"){ var t2 = (m.target.nodeValue || "").replace(/\\s+/g, " ").trim(); if(t2.length >= 2 && !isSkippedEl(m.target.parentElement)) send(t2, passageName(m.target)); continue; }',
+  '        for(var j=0;j<m.addedNodes.length;j++){ var nd = m.addedNodes[j]; if(nd.nodeType === 3){ var t3 = (nd.nodeValue || "").replace(/\\s+/g, " ").trim(); if(t3.length >= 2 && !isSkippedEl(nd.parentElement)) send(t3, passageName(nd)); } else if(nd.nodeType === 1){ collectText(nd); } }',
+  '      }',
+  '    }',
+  '    var proto = (typeof CanvasRenderingContext2D !== "undefined" && CanvasRenderingContext2D.prototype) ? CanvasRenderingContext2D.prototype : null;',
+  '    if(proto && !proto.__gtPatched){',
+  '      var origFill = proto.fillText;',
+  '      proto.fillText = function(txt){ try{ if(typeof txt === "string" && txt.trim()){ send(txt.replace(/\\s+/g, " ").trim(), passageName(this && this.canvas ? this.canvas : null)); } }catch(e){} return origFill.apply(this, arguments); };',
+  '      proto.__gtPatched = true;',
+  '    }',
+  '    function observe(){',
+  '      if(!document.documentElement) return;',
+  '      try{ new MutationObserver(collectMutations).observe(document.documentElement, {childList:true, subtree:true, characterData:true}); }catch(e){}',
+  '      if(window.__GT_CAPTURE_ON__ && document.body) collectText(document.body);',
+  '    }',
+  '    window.addEventListener("message", function(e){',
+  '      var d = e.data || {};',
+  '      if(d.type === "gt-capture-toggle"){ window.__GT_CAPTURE_ON__ = !!d.on; if(d.on){ seen = {}; if(document.body) collectText(document.body); } }',
+  '    });',
+  '    if(document.readyState === "loading"){ document.addEventListener("DOMContentLoaded", observe); } else { observe(); }',
+  '  }catch(e){}',
+  '})();'
+].join('\n');
+function captureBuildSrcdoc(html) {
+  const inject = '<script>' + CAPTURE_INJECT_SRC + '<\/script>';
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, function (m) { return m + inject; });
+  if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, function (m) { return m + '<head>' + inject + '</head>'; });
+  return inject + html;
+}
+// ---- State tangkapan (parent) ----
+let captureFile = null, captureOn = false, capturePaused = false, captureGameLoaded = false;
+let captureLog = []; // {text, passage, scope, translated, status, time, isNew}
+let captureSeen = new Set(); // unitKey(scope, teks) yang sudah masuk log
+let captureQueue = [];
+let captureFlushTimer = null, captureFlushing = false;
+function captureScopeFor(passage) {
+  if (passage) return twScope(passage);
+  return captureFile ? fileScope(captureFile.path) : null;
+}
+// Pastikan Daftar Teks menampilkan file yang sedang dimainkan. Sama seperti
+// btnShowList, tapi TIDAK mereset editan kalau file-nya sama.
+function captureEnsureList() {
+  if (!captureFile) return false;
+  if (!textListFile || textListFile.path !== captureFile.path) {
+    textListFile = captureFile;
+    textListRows = (captureFile.stringRows && captureFile.stringRows.length
+      ? captureFile.stringRows
+      : (captureFile.strings || []).map((t) => ({ text: t, scope: null, prev: null, next: null, line: null }))
+    ).slice();
+    textListPage = 0; textListEdits = {}; textListFuzzy = {};
+    if ($('textListSearch')) { $('textListSearch').value = ''; $('textListSearch').disabled = false; }
+    if ($('textListFilter')) { $('textListFilter').value = 'all'; $('textListFilter').disabled = false; }
+    $('btnTranslateList').disabled = false; $('btnApplyList').disabled = false; $('btnDownloadList').disabled = false; $('btnUploadList').disabled = false; if ($('btnListCopyAll')) $('btnListCopyAll').disabled = false;
+    renderTextList();
+  }
+  return true;
+}
+// Masukkan satu tangkapan ke Daftar Teks. Kembalikan {idx, isNew}.
+// ATURAN: kolom terjemahan yang sudah terisi (edit manual / terjemahan
+// lama) TIDAK PERNAH ditimpa — hanya kolom kosong yang diisi.
+function captureAddToTextList(entry) {
+  if (!captureEnsureList()) return { idx: -1, isNew: false };
+  const key = unitKey(entry.scope, entry.text);
+  let idx = -1;
+  for (let i = 0; i < textListRows.length; i++) { if (unitKey(textListRows[i].scope, textListRows[i].text) === key) { idx = i; break; } }
+  if (idx >= 0) {
+    if (entry.translated && entry.translated !== entry.text && !(textListEdits[idx] || '').trim()) textListEdits[idx] = entry.translated;
+    return { idx: idx, isNew: false };
+  }
+  const row = { text: entry.text, scope: entry.scope, prev: null, next: null, line: null, live: true };
+  textListRows.push(row);
+  if (captureFile.stringRows && !captureFile.stringRows.some((r) => unitKey(r.scope, r.text) === key)) captureFile.stringRows.push(row);
+  if (captureFile.strings && captureFile.strings.indexOf(entry.text) < 0) captureFile.strings.push(entry.text);
+  idx = textListRows.length - 1;
+  if (entry.translated && entry.translated !== entry.text) textListEdits[idx] = entry.translated;
+  return { idx: idx, isNew: true };
+}
+// Isi kolom terjemahan baris yang sudah ada begitu terjemahan otomatisnya
+// selesai — lagi-lagi hanya kalau kolomnya masih kosong.
+function captureFillTranslation(entry) {
+  if (!entry.translated || entry.translated === entry.text || !captureFile) return;
+  const key = unitKey(entry.scope, entry.text);
+  for (let i = 0; i < textListRows.length; i++) {
+    if (unitKey(textListRows[i].scope, textListRows[i].text) === key) {
+      if (!(textListEdits[i] || '').trim()) textListEdits[i] = entry.translated;
+      break;
+    }
+  }
+}
+function captureEnqueue(entry) {
+  captureQueue.push(entry);
+  if (!captureFlushTimer) captureFlushTimer = setTimeout(captureFlushQueue, 1200);
+}
+async function captureFlushQueue() {
+  captureFlushTimer = null;
+  if (captureFlushing) return;
+  captureFlushing = true;
+  try {
+    while (captureQueue.length) {
+      const batch = captureQueue.splice(0, 10);
+      const src = srcLang.value, tgt = tgtLang.value;
+      if (src === tgt) { batch.forEach((e) => { e.status = 'gagal'; }); captureRenderLog(); continue; }
+      let res = null;
+      try { res = await GT.translateTexts(batch.map((e) => e.text), src, tgt, { scopes: batch.map((e) => e.scope), parallel: false }); }
+      catch (e) { res = null; }
+      batch.forEach((e) => {
+        const r = res ? res.get(unitKey(e.scope, e.text)) : null;
+        if (r && !r.failed && r.translated && r.translated !== e.text) {
+          e.translated = r.translated; e.status = 'ok'; captureFillTranslation(e);
+        } else { e.status = 'gagal'; /* gagal = kolom dibiarkan kosong; translateTexts tidak pernah mencache yang gagal */ }
+      });
+      captureRenderLog();
+      if ($('textListCard') && $('textListCard').style.display !== 'none' && textListRows.length) renderTextList();
+    }
+  } finally { captureFlushing = false; }
+}
+function captureHandle(text, passage) {
+  if (!captureOn || capturePaused) return null;
+  const t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+  if (captureShouldSkip(t)) return null;
+  const scope = captureScopeFor(passage);
+  const key = unitKey(scope, t);
+  if (captureSeen.has(key)) return null;
+  captureSeen.add(key);
+  const entry = { text: t, passage: passage || '', scope: scope, translated: '', status: 'menunggu', time: new Date().toLocaleTimeString('id-ID'), isNew: false };
+  entry.isNew = captureAddToTextList(entry).isNew;
+  captureLog.push(entry);
+  captureRenderLog();
+  captureEnqueue(entry);
+  return entry;
+}
+function captureRenderLog() {
+  const wrap = $('captureLog');
+  if (!wrap) return;
+  const onlyNew = $('captureOnlyNew') && $('captureOnlyNew').checked;
+  const rows = captureLog.filter((e) => !onlyNew || e.isNew);
+  if (!rows.length) { wrap.innerHTML = '<p class="muted" style="padding:8px">Belum ada teks yang ditangkap.</p>'; return; }
+  const shown = rows.slice(-300);
+  let html = '';
+  if (rows.length > 300) html += '<p class="muted">Menampilkan 300 tangkapan terakhir dari ' + rows.length + '.</p>';
+  shown.forEach((e) => {
+    const idx = captureLog.indexOf(e);
+    const pass = e.passage ? '<span style="color:#38bdf8">📍 ' + esc(e.passage) + '</span> ' : '';
+    let tr = '';
+    if (e.status === 'ok') tr = '<div style="color:#86efac">' + esc(e.translated) + '</div>';
+    else if (e.status === 'gagal') tr = '<div style="color:#f87171">❌ Gagal diterjemahkan — kolom dibiarkan kosong supaya aman di-retry. <button data-capretry="' + idx + '" style="padding:2px 8px; font-size:12px">↻ Coba lagi</button></div>';
+    else tr = '<div class="muted">⏳ Menerjemahkan…</div>';
+    html += '<div style="border-top:1px solid #334155; padding:6px 2px"><div style="color:#94a3b8; font-size:11px">' + esc(e.time) + ' ' + pass + (e.isNew ? '<span style="color:#f87171">🔴 Live</span>' : '<span style="color:#64748b">sudah ada di Daftar Teks</span>') + ' <button data-capcopy="' + idx + '" style="padding:2px 8px; font-size:12px; float:right">📋 Salin</button></div><div style="white-space:pre-wrap; word-break:break-word">' + esc(e.text) + '</div>' + tr + '</div>';
+  });
+  wrap.innerHTML = html;
+  wrap.scrollTop = wrap.scrollHeight;
+}
+function captureUpdateToggleUI() {
+  const b = $('btnCaptureToggle');
+  if (!b) return;
+  b.textContent = captureOn ? '⏹ Matikan Tangkap (nyala)' : '▶ Mulai Tangkap (mati)';
+  b.style.background = captureOn ? '#b91c1c' : '';
+  b.style.color = captureOn ? '#fff' : '';
+  const p = $('btnCapturePause');
+  if (p) p.textContent = capturePaused ? '▶ Lanjut' : '⏸ Jeda';
+}
+function captureNotifyFrame() {
+  try {
+    const f = $('captureFrame');
+    if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'gt-capture-toggle', on: captureOn && !capturePaused }, '*');
+  } catch (e) {}
+}
+$('btnCapturePlay').addEventListener('click', () => {
+  const path = $('captureFile') ? $('captureFile').value : '';
+  captureFile = allFiles.find((f) => f.path === path) || null;
+  if (!captureFile || !captureFile.content) { $('captureStatus').textContent = 'Pilih dulu file game HTML-nya (scan dulu di atas).'; return; }
+  if (captureFile.ext !== 'html' && captureFile.ext !== 'htm') { $('captureStatus').textContent = 'Tangkap Teks hanya untuk file game .html.'; return; }
+  captureSeen = new Set();
+  captureGameLoaded = true;
+  $('captureFrame').srcdoc = captureBuildSrcdoc(captureFile.content);
+  $('btnCaptureToggle').disabled = false; $('btnCapturePause').disabled = false;
+  $('captureStatus').textContent = 'Game "' + captureFile.path + '" dimuat. Klik "Mulai Tangkap" untuk mulai menangkap teks.';
+  $('captureFrame').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+$('btnCaptureToggle').addEventListener('click', () => {
+  if (!captureGameLoaded) { $('captureStatus').textContent = 'Klik "Mainkan" dulu untuk memuat game.'; return; }
+  captureOn = !captureOn;
+  if (captureOn) capturePaused = false;
+  captureUpdateToggleUI();
+  captureNotifyFrame();
+  $('captureStatus').textContent = captureOn ? '🟢 Tangkapan NYALA — mainkan game, teks baru akan masuk log dan Daftar Teks.' : 'Tangkapan MATI — tidak ada teks yang direkam.';
+});
+$('btnCapturePause').addEventListener('click', () => {
+  if (!captureOn) return;
+  capturePaused = !capturePaused;
+  captureUpdateToggleUI();
+  captureNotifyFrame();
+  $('captureStatus').textContent = capturePaused ? '⏸ Dijeda — teks yang muncul tidak direkam.' : '▶ Dilanjutkan.';
+});
+$('captureOnlyNew').addEventListener('change', () => captureRenderLog());
+$('captureLog').addEventListener('click', (ev) => {
+  const btn = ev.target && ev.target.closest ? ev.target.closest('button[data-capretry], button[data-capcopy]') : null;
+  if (!btn) return;
+  const idx = parseInt(btn.getAttribute('data-capretry') || btn.getAttribute('data-capcopy'), 10);
+  const e = captureLog[idx];
+  if (!e) return;
+  if (btn.hasAttribute('data-capretry')) { e.status = 'menunggu'; e.translated = ''; captureEnqueue(e); captureRenderLog(); }
+  else {
+    const txt = e.text + (e.translated ? '\n' + e.translated : '');
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).catch(() => {});
+    else { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (err) {} ta.remove(); }
+  }
+});
+$('btnCaptureCopy').addEventListener('click', () => {
+  const lines = [];
+  captureLog.forEach((e, i) => { lines.push((i + 1) + '. ' + (e.passage ? '[' + e.passage + '] ' : '') + e.text); if (e.translated) lines.push('   ID: ' + e.translated); });
+  const txt = lines.join('\n');
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).catch(() => { $('captureStatus').textContent = 'Gagal menyalin log.'; });
+  else $('captureStatus').textContent = 'Browser ini tidak mendukung salin otomatis.';
+});
+$('btnCaptureSaveTxt').addEventListener('click', () => {
+  const lines = [];
+  captureLog.forEach((e, i) => { lines.push((i + 1) + '. ' + (e.passage ? '[' + e.passage + '] ' : '') + e.text); if (e.translated) lines.push('   ID: ' + e.translated); });
+  const blob = new Blob([lines.join('\n') || 'Belum ada teks yang ditangkap.'], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tangkap-teks-' + new Date().toISOString().slice(0, 10) + '.txt';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
+});
+$('btnCaptureClear').addEventListener('click', () => {
+  captureLog = []; captureSeen = new Set(); captureQueue = [];
+  captureRenderLog();
+  $('captureStatus').textContent = 'Log dihapus.';
+});
+window.addEventListener('message', (e) => {
+  const f = $('captureFrame');
+  if (!f || !f.contentWindow || e.source !== f.contentWindow) return;
+  const d = e.data || {};
+  if (d.type === 'gt-capture' && typeof d.text === 'string') captureHandle(d.text, d.passage || '');
+});
+// FASE 43: akses pengujian (jsdom) + toggle dari luar.
+window.GTCapture = {
+  get on() { return captureOn; }, get paused() { return capturePaused; },
+  get log() { return captureLog; }, get seen() { return captureSeen; }, get file() { return captureFile; },
+  handle: captureHandle, shouldSkip: captureShouldSkip, buildSrcdoc: captureBuildSrcdoc,
+  injectSrc: CAPTURE_INJECT_SRC, addToTextList: captureAddToTextList, flushQueue: captureFlushQueue,
+  setOn(v) { captureOn = !!v; if (captureOn) capturePaused = false; captureUpdateToggleUI(); captureNotifyFrame(); },
+  setPaused(v) { capturePaused = !!v; captureUpdateToggleUI(); captureNotifyFrame(); },
+  setFile(f) { captureFile = f || null; },
+  get rows() { return textListRows; },
+  getEdit(i) { return textListEdits[i] || ''; },
+  setEdit(i, v) { if (v) textListEdits[i] = v; else delete textListEdits[i]; },
+  reset() { captureLog = []; captureSeen = new Set(); captureQueue = []; captureOn = false; capturePaused = false; captureUpdateToggleUI(); }
+};
 // Download daftar teks sebagai file .txt (format nomor seperti Game Text Editor).
 // FASE 29: dulu handler ini sinkron dan memanggil textListGet(i) (= querySelector)
 // untuk SETIAP teks — pada daftar 15.898 teks halaman membeku ~8 detik dan
@@ -5730,7 +6096,8 @@ window.GTGabungan = {
   renpyExtractSaySuffix, renpyNormaliseLine, renpyIsTechnicalString,
   renpyLogicalLines, renpyScanTl, renpyTlBuild, renpyTlPath,
   renpyPoBuild, renpyPoEscape, poWrap,
-  godotParseGdStrings, godotExtractTscn, godotPoBuild, godotPoEscape
+  godotParseGdStrings, godotExtractTscn, godotPoBuild, godotPoEscape,
+  captureShouldSkip, captureBuildSrcdoc
 };
 </script>
 </body>
