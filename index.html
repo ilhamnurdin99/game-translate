@@ -91,7 +91,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 <body>
 <header>
   <h1>🎮 Game Translate — Cek &amp; Terjemah Game</h1>
-  <p>Cek dulu di file mana bahasa game disimpan, centang file yang mau diterjemahkan, lalu download hasilnya sebagai ZIP. Tanpa server, semua proses jalan di perangkatmu. <span style="display:inline-block; margin-top:6px; padding:2px 10px; border:1px solid #38bdf8; border-radius:999px; color:#38bdf8; font-size:12px; font-weight:700">FASE 43</span></p>
+  <p>Cek dulu di file mana bahasa game disimpan, centang file yang mau diterjemahkan, lalu download hasilnya sebagai ZIP. Tanpa server, semua proses jalan di perangkatmu. <span style="display:inline-block; margin-top:6px; padding:2px 10px; border:1px solid #38bdf8; border-radius:999px; color:#38bdf8; font-size:12px; font-weight:700">FASE 44</span></p>
 </header>
 <main>
   <div class="tabs">
@@ -282,7 +282,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   <section class="card" id="captureCard" style="display:none">
     <h2>5. Tangkap Teks (mode seperti Textractor)</h2>
     <p class="hint">Mainkan game di dalam web app ini — teks yang muncul saat bermain ditangkap otomatis, diterjemahkan, dan langsung masuk ke Daftar Teks (baris baru bertanda 🔴 Live). Setelah selesai, klik "Timpa File Asli" di Daftar Teks lalu "Download ZIP terjemahan" seperti biasa.</p>
-    <div class="warn">⚠️ <b>Batasan yang perlu diketahui:</b> game harus dimainkan dari dalam web app ini — tidak bisa menangkap teks dari game yang dibuka di tab lain, atau dari situs online seperti Worldstate. Game canvas/WebGL murni hanya ketangkap kalau teksnya digambar lewat <b>fillText</b>; teks yang digambar sebagai gambar tidak bisa ditangkap. Game jalan di dalam frame yang di-sandbox (kode game tidak bisa membaca data web app ini, termasuk API key) — akibatnya save game yang memakai localStorage bisa tidak jalan di sebagian game, dan sebagian game bisa rewel soal fullscreen di dalam frame.</div>
+    <div class="warn">⚠️ <b>Batasan yang perlu diketahui:</b> game harus dimainkan dari dalam web app ini — tidak bisa menangkap teks dari game yang dibuka di tab lain, atau dari situs online seperti Worldstate. Game canvas/WebGL murni hanya ketangkap kalau teksnya digambar lewat <b>fillText</b>; teks yang digambar sebagai gambar tidak bisa ditangkap. Game jalan di dalam frame yang di-sandbox (kode game tidak bisa membaca data web app ini, termasuk API key). Save game: sejak FASE 44, save SugarCube/Harlowe yang memakai localStorage sudah jalan dan tersimpan per file game (disimpan oleh web app, bukan oleh game) — jadi save tidak hilang saat game dimuat ulang; sebagian game bisa rewel soal fullscreen di dalam frame.</div>
     <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
       <label for="captureFile"><b>File game (.html):</b></label>
       <select id="captureFile" style="max-width:50%"></select>
@@ -307,7 +307,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li>Pilih file ZIP/APK, folder, atau banyak file game, lalu klik <b>Periksa Sekarang</b>.</li>
       <li>Centang file yang mau diterjemahkan, lalu klik <b>Terjemahkan yang dipilih</b> atau <b>Terjemahkan Semua</b>. Tunggu sampai selesai (file besar butuh waktu; butuh internet karena terjemahan lewat Google).</li>
       <li>Untuk daftar besar, pakai <b>Daftar Teks</b>: pilih file, klik "Tampilkan Daftar Teks", lalu "Terjemahkan Daftar". Kalau sudah selesai, klik <b>Timpa File Asli</b> — file langsung jadi tanpa internet (hanya memakai terjemahan dari daftar), lalu unduh lewat <b>Download ZIP terjemahan</b>. Kalau daftar lebih besar dari 4000 teks, klik "Simpan Proyek" supaya terjemahan tidak hilang saat halaman di-refresh. Setiap baris menampilkan konteksnya (📍 nama passage + kalimat sebelum/sesudah) — teks yang sama di dua passage bisa diterjemahkan berbeda, dan pencarian juga mencocokkan nama passage.</li>
-      <li><b>Tangkap Teks (FASE 43):</b> mau menangkap teks yang hanya muncul saat bermain (teks dinamis)? Setelah scan, di bagian 5 pilih file game .html lalu klik <b>Mainkan</b> — game jalan di dalam web app. Klik <b>Mulai Tangkap</b> (default mati), lalu mainkan seperti biasa: teks baru langsung ditangkap, diterjemahkan otomatis, dan masuk ke <b>Daftar Teks</b> dengan badge 🔴 Live (saring lewat filter "Live"). Teks yang gagal diterjemahkan dibiarkan kosong supaya aman di-retry; editan manual tidak pernah ditimpa. Setelah selesai, klik <b>Timpa File Asli</b> lalu <b>Download ZIP terjemahan</b>. Batasan: tidak bisa menangkap dari tab lain atau situs online (mis. Worldstate), dan teks canvas hanya ketangkap kalau digambar lewat fillText.</li>
+      <li><b>Tangkap Teks (FASE 43, diperbaiki FASE 44):</b> mau menangkap teks yang hanya muncul saat bermain (teks dinamis)? Setelah scan, di bagian 5 pilih file game .html lalu klik <b>Mainkan</b> — game jalan di dalam web app. Klik <b>Mulai Tangkap</b> (default mati), lalu mainkan seperti biasa: teks baru langsung ditangkap, diterjemahkan otomatis, dan masuk ke <b>Daftar Teks</b> dengan badge 🔴 Live (saring lewat filter "Live"). Teks yang gagal diterjemahkan dibiarkan kosong supaya aman di-retry; editan manual tidak pernah ditimpa. Setelah selesai, klik <b>Timpa File Asli</b> lalu <b>Download ZIP terjemahan</b>. Batasan: tidak bisa menangkap dari tab lain atau situs online (mis. Worldstate), dan teks canvas hanya ketangkap kalau digambar lewat fillText. Sejak FASE 44, save game SugarCube/Harlowe yang memakai localStorage sudah jalan dan tersimpan per file game — jadi game tidak lagi menampilkan error fatal "All usable storage APIs are missing" di dalam frame.</li>
       <li>Klik <b>Cek Hasil</b> untuk memeriksa macro, link, dan tag masih utuh. Kalau ada yang rusak, klik <b>Perbaiki</b>.</li>
       <li>Klik <b>Download ZIP terjemahan</b>, lalu ekstrak dan mainkan seperti biasa.</li>
       <li>Untuk game Ren'Py (.rpy): setelah diterjemahkan, klik <b>Download tl/id/ (Ren'Py)</b> — hasilnya folder <b>game/tl/id/</b> (format asli Ren'Py, file asli tidak diubah). Salin folder itu ke folder <b>game/</b> di game Ren'Py kamu, lalu pilih bahasa di Preferences &gt; Language.</li>
@@ -4371,7 +4371,12 @@ $('btnApplyList').addEventListener('click', async () => {
    ada teks yang direkam sampai tombol "Mulai Tangkap" ditekan. Terjemahan
    memakai GT.translateTexts yang sudah ada (glosarium + cache + mesin yang
    sama, batch 10 teks / 1000 karakter / 300ms dari FASE 23 — TIDAK diubah);
-   hasil gagal TIDAK PERNAH masuk cache (aturan lama translateTexts). */
+   hasil gagal TIDAK PERNAH masuk cache (aturan lama translateTexts).
+   FASE 44: script suntikan memasang shim localStorage/sessionStorage di
+   memori kalau storage asli tidak bisa dipakai (origin opaque di iframe
+   sandbox) — SugarCube abort tanpa ini. Isi store localStorage shim
+   dilaporkan ke parent lewat postMessage gt-storage dan disimpan per file
+   game (captureStoreKey) supaya save pulih saat frame di-reload. */
 const CAPTURE_UI_LABELS = new Set(['save', 'load', 'settings', 'options', 'menu', 'continue', 'back', 'next', 'previous', 'restart', 'quit', 'exit', 'close', 'cancel', 'ok', 'yes', 'no', 'play', 'pause', 'resume', 'skip', 'auto', 'log', 'history', 'gallery', 'extras', 'credits', 'help', 'about', 'inventory', 'status', 'character', 'map', 'journal', 'achievements', 'trophies', 'save game', 'load game', 'new game', 'continue game', 'restart game', 'main menu', 'title screen', 'game over', 'sound on', 'sound off', 'music on', 'music off', 'delete save', 'return to title', 'are you sure', 'confirm', 'apply', 'default', 'reset', 'volume', 'fullscreen', 'language']);
 function captureShouldSkip(s) {
   if (!s) return true;
@@ -4399,6 +4404,33 @@ function captureShouldSkip(s) {
 const CAPTURE_INJECT_SRC = [
   '(function(){',
   '  try{',
+  '    function gtMakeStore(seed, persist){',
+  '      var data = {};',
+  '      if(seed){ for(var k in seed){ if(Object.prototype.hasOwnProperty.call(seed, k)){ data[k] = String(seed[k]); } } }',
+  '      function sync(){ if(persist){ try{ window.parent.postMessage({type:"gt-storage", store:"local", data:data}, "*"); }catch(e){} } }',
+  '      var store = {};',
+  '      store.getItem = function(k){ k = String(k); return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; };',
+  '      store.setItem = function(k, v){ data[String(k)] = String(v); sync(); };',
+  '      store.removeItem = function(k){ delete data[String(k)]; sync(); };',
+  '      store.clear = function(){ data = {}; sync(); };',
+  '      store.key = function(i){ var keys = Object.keys(data); i = +i; return (i >= 0 && i < keys.length) ? keys[i] : null; };',
+  '      Object.defineProperty(store, "length", {get:function(){ return Object.keys(data).length; }, configurable:true});',
+  '      return store;',
+  '    }',
+  '    function gtStorageUsable(name){',
+  '      try{ var s = window[name]; s.setItem("__gt_test__", "1"); s.removeItem("__gt_test__"); return true; }catch(e){ return false; }',
+  '    }',
+  '    try{',
+  '      if(!gtStorageUsable("localStorage")){',
+  '        var lsSeed = (window.__GT_LS_SEED__ && typeof window.__GT_LS_SEED__ === "object") ? window.__GT_LS_SEED__ : {};',
+  '        Object.defineProperty(window, "localStorage", {value:gtMakeStore(lsSeed, true), configurable:true, writable:true});',
+  '      }',
+  '    }catch(e){}',
+  '    try{',
+  '      if(!gtStorageUsable("sessionStorage")){',
+  '        Object.defineProperty(window, "sessionStorage", {value:gtMakeStore(null, false), configurable:true, writable:true});',
+  '      }',
+  '    }catch(e){}',
   '    window.__GT_CAPTURE_ON__ = false;',
   '    var seen = {};',
   '    function passageName(node){',
@@ -4466,11 +4498,57 @@ const CAPTURE_INJECT_SRC = [
   '  }catch(e){}',
   '})();'
 ].join('\n');
-function captureBuildSrcdoc(html) {
-  const inject = '<script>' + CAPTURE_INJECT_SRC + '<\/script>';
+// FASE 44: seed simpanan save game (localStorage shim) disematkan sebelum
+// script tangkap, supaya save lama pulih saat game dimuat lagi. Seed adalah
+// JSON yang sudah di-escape (captureSeedJson) — tanpa seed, '{}' kosong.
+function captureBuildSrcdoc(html, seed) {
+  const seedJson = (typeof seed === 'string' && seed) ? seed : '{}';
+  const inject = '<script>window.__GT_LS_SEED__=' + seedJson + ';\n' + CAPTURE_INJECT_SRC + '<\/script>';
   if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, function (m) { return m + inject; });
   if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, function (m) { return m + '<head>' + inject + '</head>'; });
   return inject + html;
+}
+// ---- FASE 44: simpanan save game untuk iframe (shim storage) ----
+// Iframe game di-sandbox TANPA allow-same-origin, jadi origin-nya opaque
+// dan localStorage asli tidak bisa dipakai — SugarCube abort dengan fatal
+// error kalau storage tidak ada. Solusi: script suntikan memasang shim
+// localStorage/sessionStorage di memori (di CAPTURE_INJECT_SRC), dan parent
+// menyimpan isi store localStorage shim per file game di localStorage web
+// app sendiri (kunci = nama file + hash isi, supaya game berbeda tidak
+// saling menimpa). Kode game tetap tidak bisa membaca data web app
+// (tanpa allow-same-origin, postMessage hanya satu arah: game -> parent).
+const CAPTURE_STORE_PREFIX = 'gt_capture_store_';
+function captureStoreKey(file) {
+  if (!file) return null;
+  let h = 0;
+  const s = String(file.content || '');
+  for (let i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+  return CAPTURE_STORE_PREFIX + (h >>> 0).toString(36) + '_' + String(file.path || 'game').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 60);
+}
+function captureLoadStore(file) {
+  try {
+    const key = captureStoreKey(file);
+    if (!key) return {};
+    const raw = localStorage.getItem(key);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
+    const out = {};
+    for (const k in obj) { if (Object.prototype.hasOwnProperty.call(obj, k)) out[k] = String(obj[k]); }
+    return out;
+  } catch (e) { return {}; }
+}
+function captureSaveStore(file, data) {
+  try {
+    const key = captureStoreKey(file);
+    if (!key) return;
+    localStorage.setItem(key, JSON.stringify(data || {}));
+  } catch (e) { /* kuota penuh / storage tidak tersedia: save tetap jalan di memori iframe */ }
+}
+// JSON seed untuk disematkan di srcdoc — '</' di-escape supaya tidak
+// memutus tag <script> suntikan.
+function captureSeedJson(file) {
+  return JSON.stringify(captureLoadStore(file)).replace(/<\//g, '<\\/');
 }
 // ---- State tangkapan (parent) ----
 let captureFile = null, captureOn = false, capturePaused = false, captureGameLoaded = false;
@@ -4617,7 +4695,7 @@ $('btnCapturePlay').addEventListener('click', () => {
   if (captureFile.ext !== 'html' && captureFile.ext !== 'htm') { $('captureStatus').textContent = 'Tangkap Teks hanya untuk file game .html.'; return; }
   captureSeen = new Set();
   captureGameLoaded = true;
-  $('captureFrame').srcdoc = captureBuildSrcdoc(captureFile.content);
+  $('captureFrame').srcdoc = captureBuildSrcdoc(captureFile.content, captureSeedJson(captureFile));
   $('btnCaptureToggle').disabled = false; $('btnCapturePause').disabled = false;
   $('captureStatus').textContent = 'Game "' + captureFile.path + '" dimuat. Klik "Mulai Tangkap" untuk mulai menangkap teks.';
   $('captureFrame').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -4677,6 +4755,9 @@ window.addEventListener('message', (e) => {
   const f = $('captureFrame');
   if (!f || !f.contentWindow || e.source !== f.contentWindow) return;
   const d = e.data || {};
+  // FASE 44: shim localStorage di iframe melaporkan isi store-nya — parent
+  // menyimpan blob-nya supaya save game pulih saat frame di-reload.
+  if (d.type === 'gt-storage' && d.store === 'local' && d.data && typeof d.data === 'object') { if (captureFile) captureSaveStore(captureFile, d.data); return; }
   if (d.type === 'gt-capture' && typeof d.text === 'string') captureHandle(d.text, d.passage || '');
 });
 // FASE 43: akses pengujian (jsdom) + toggle dari luar.
@@ -4684,6 +4765,7 @@ window.GTCapture = {
   get on() { return captureOn; }, get paused() { return capturePaused; },
   get log() { return captureLog; }, get seen() { return captureSeen; }, get file() { return captureFile; },
   handle: captureHandle, shouldSkip: captureShouldSkip, buildSrcdoc: captureBuildSrcdoc,
+  storeKey: captureStoreKey, loadStore: captureLoadStore, saveStore: captureSaveStore, seedJson: captureSeedJson,
   injectSrc: CAPTURE_INJECT_SRC, addToTextList: captureAddToTextList, flushQueue: captureFlushQueue,
   setOn(v) { captureOn = !!v; if (captureOn) capturePaused = false; captureUpdateToggleUI(); captureNotifyFrame(); },
   setPaused(v) { capturePaused = !!v; captureUpdateToggleUI(); captureNotifyFrame(); },
@@ -6097,7 +6179,7 @@ window.GTGabungan = {
   renpyLogicalLines, renpyScanTl, renpyTlBuild, renpyTlPath,
   renpyPoBuild, renpyPoEscape, poWrap,
   godotParseGdStrings, godotExtractTscn, godotPoBuild, godotPoEscape,
-  captureShouldSkip, captureBuildSrcdoc
+  captureShouldSkip, captureBuildSrcdoc, captureStoreKey, captureLoadStore, captureSaveStore, captureSeedJson
 };
 </script>
 </body>
